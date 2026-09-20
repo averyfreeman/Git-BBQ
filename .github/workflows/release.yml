@@ -1,0 +1,40 @@
+name: Git BBQ release artifacts
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-linux
+            artifact: git-bbq-x86_64-linux
+          - target: aarch64-darwin
+            artifact: git-bbq-aarch64-darwin
+          - target: windows-x86_64
+            artifact: git-bbq-windows-x86_64
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build plugin package
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python3 scripts/build_git_bbq_plugin.py \
+            --output ".tmp/${{ matrix.artifact }}" \
+            --target "${{ matrix.target }}" \
+            --plugin-version "$version" \
+            --force
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: .tmp/${{ matrix.artifact }}

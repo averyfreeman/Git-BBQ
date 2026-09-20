@@ -1,0 +1,40 @@
+package gitbbq
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestGenerateSchemasReflectsGoContracts(t *testing.T) {
+	schemas, err := GenerateSchemas()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(schemas) != 5 {
+		t.Fatalf("schema count = %d", len(schemas))
+	}
+	for name, data := range schemas {
+		content := string(data)
+		if !strings.Contains(content, "2020-12") || !strings.Contains(content, "schema_version") {
+			t.Fatalf("schema %s is not a Go-generated public contract: %s", name, content)
+		}
+	}
+}
+
+func TestWriteSchemasUsesStableProjectDirectory(t *testing.T) {
+	root := t.TempDir()
+	paths, err := WriteSchemas(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(paths) != 5 {
+		t.Fatalf("paths = %#v", paths)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path))); err != nil {
+			t.Fatalf("missing schema %s: %v", path, err)
+		}
+	}
+}

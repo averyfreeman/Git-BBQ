@@ -1,0 +1,21 @@
+.venv/
+.uv-cache/
+dist/
+bin/
+build/
+*.egg-info/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.test-tmp/
+.tmp/
+evaluation-data/*.lock
+evaluation-data/.exploratory-runs.jsonl.*.tmp
+pytest-cache-files-*/
+
+# Runtime artifacts created while exercising bundled demo projects.
+/demo/**/.ai-architect/

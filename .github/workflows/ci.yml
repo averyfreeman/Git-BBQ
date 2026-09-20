@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting
+        run: test -z "$(gofmt -l cmd internal)"
+      - name: Generate schemas
+        run: go run ./cmd/git-bbq schema .
+      - name: Verify generated schemas
+        run: git diff --exit-code
+      - run: go test ./...
+      - run: go vet ./...
+      - run: go build ./cmd/git-bbq
+
+  plugin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build Linux plugin package
+        run: python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-plugin --target x86_64-linux --force
+      - name: Verify packaged hooks and runtime
+        run: |
+          test -x .tmp/git-bbq-plugin/runtime/git-bbq/git-bbq
+          test "$(python3 -c 'import json; print(len(json.load(open(".tmp/git-bbq-plugin/hooks/hooks.json"))["hooks"]))')" = "5"

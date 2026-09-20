@@ -1,0 +1,7 @@
+interface:
+  display_name: "Git BBQ"
+  short_description: "Scaffold an agent-ready repository"
+  default_prompt: "Ask the project problem, scaffold the repository, and align its ADRs with Matt Pocock skills."
+
+policy:
+  allow_implicit_invocation: false
