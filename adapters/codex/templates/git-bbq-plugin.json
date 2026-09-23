@@ -1,21 +1,38 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "git-bbq",
-  "version": "0.1.0",
-  "description": "Matt-driven architecture scaffolding, agent documents, and explicit Git habits.",
+  "version": "0.2.0",
+  "description": "Local repository scaffolding, durable architecture records, and guarded Git workflows for coding agents.",
+  "author": {
+    "name": "Avery Freeman",
+    "url": "https://github.com/averyfreeman"
+  },
+  "homepage": "https://github.com/averyfreeman/git-bbq",
+  "repository": "https://github.com/averyfreeman/git-bbq",
   "license": "MIT",
-  "keywords": ["architecture", "adr", "githabits", "agent-skills", "scaffolding"],
-  "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
-  "interface": {
-    "displayName": "Git BBQ",
-    "shortDescription": "Scaffold a robust agent-ready repository",
-    "longDescription": "Git BBQ combines the pinned Matt Pocock skill ecosystem with a Go scaffold, Matt-native ADRs, agent documents, language skills, explicit githabits, and five deterministic Codex lifecycle hooks. Activate all five bundled hooks before first use.",
-    "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
-    "defaultPrompt": [
-      "Scaffold this repository for agent-driven development.",
-      "Ask the project problem and create Matt-native architecture records.",
-      "Review the repository's githabits and lifecycle hooks."
-    ]
+  "keywords": ["git", "architecture", "adr", "githabits", "scaffolding"],
+  "extensions": {
+    "com.openai": {
+      "hooks": "./hooks/hooks.json",
+      "interface": {
+        "displayName": "Git BBQ",
+        "shortDescription": "Scaffold an agent-ready repository",
+        "longDescription": "Git BBQ creates durable project context, Matt-native ADRs, language skills, explicit Git workflow policy, and five deterministic Codex lifecycle hooks.",
+        "developerName": "Git BBQ",
+        "category": "Developer Tools",
+        "capabilities": ["Read", "Write"],
+        "websiteURL": "https://github.com/averyfreeman/git-bbq",
+        "privacyPolicyURL": "https://github.com/averyfreeman/git-bbq/blob/main/docs/PRIVACY.md",
+        "termsOfServiceURL": "https://github.com/averyfreeman/git-bbq/blob/main/docs/TERMS.md",
+        "defaultPrompt": [
+          "Scaffold this repository for agent-driven development.",
+          "Create or review durable architecture records and project context.",
+          "Review the repository's Git workflow policy before proposing a mutation."
+        ],
+        "brandColor": "#F97316",
+        "composerIcon": "./assets/logo.svg",
+        "logo": "./assets/logo.svg"
+      }
+    }
   }
 }

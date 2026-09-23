@@ -82,9 +82,6 @@ func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, erro
 	if err := write("AGENTS.md", []byte(renderAgents())); err != nil {
 		return ScaffoldResult{}, err
 	}
-	if err := write("CLAUDE.md", []byte("# Claude instructions\n\nRead [AGENTS.md](./AGENTS.md) before working in this repository.\n")); err != nil {
-		return ScaffoldResult{}, err
-	}
 	dependencyData, err := marshalYAML(manifest.Matt)
 	if err != nil {
 		return ScaffoldResult{}, err

@@ -16,6 +16,8 @@ jobs:
             artifact: git-bbq-x86_64-linux
           - target: aarch64-darwin
             artifact: git-bbq-aarch64-darwin
+          - target: x86_64-darwin
+            artifact: git-bbq-x86_64-darwin
           - target: windows-x86_64
             artifact: git-bbq-windows-x86_64
     runs-on: ubuntu-latest
@@ -34,6 +36,8 @@ jobs:
             --target "${{ matrix.target }}" \
             --plugin-version "$version" \
             --force
+      - name: Validate plugin package
+        run: python3 scripts/validate_git_bbq_plugin.py ".tmp/${{ matrix.artifact }}" --target "${{ matrix.target }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

@@ -10,6 +10,10 @@ validation, and lifecycle hook handling. Treat Matt Pocock skills as the
 semantic architecture authority. Read `CONTEXT.md` and the relevant files under
 `docs/adr/` before proposing a material architectural decision.
 
+Use `git-bbq help <command>` for syntax details. In particular,
+`git-bbq help hooks` documents the lifecycle event contract and explains that
+hook trust is granted by the Codex host with `/hooks`, not by this executable.
+
 Project-owned Git behavior is defined by `.githabits.yaml`. Check each action's
 policy before initializing Git, creating branches, staging, committing, tagging,
 configuring a remote, or pushing. A profile is policy, not a bypass for

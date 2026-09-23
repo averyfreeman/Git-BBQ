@@ -22,7 +22,7 @@ project contains:
 | `docs/adr/NNNN-slug.md` | The only architectural decision source of truth |
 | `.githabits.yaml` | Granular policy for init, branch, stage, commit, tag, remote, and push |
 | `.gitbbq-manifest.yaml` | Project problem, languages, pinned Matt dependency, and hooks |
-| `AGENTS.md` / `CLAUDE.md` | Thin agent routers |
+| `AGENTS.md` | Thin Codex agent router |
 | `.agents/skills/` | Githabits plus selected language skills |
 | `.agents/mattpocock/DEPENDENCY.yaml` | Upstream repository and commit pin |
 | `architecture-contract.yaml` | Generated contract projection |
@@ -39,15 +39,6 @@ Use `git-bbq assess` first. It is read-only and reports proposed paths and
 conflicts. `git-bbq apply --approve` is the separate persistence step; it
 rechecks the repository before writing. Existing files are preserved unless
 `--force` is explicitly supplied.
-
-For a legacy `ai-architect` project, run `git-bbq migrate [path] --json` first.
-This command is read-only by default: it inventories `.ai-architect` artifacts,
-proposed Matt-native targets, conflicts, and the explicit-approval boundary.
-`git-bbq migrate [path] --approve --json` applies an additive migration, keeps
-`.ai-architect/`, converts validated ADRs under `docs/adr/`, and archives an
-incompatible legacy `.githabits.yaml` before replacing it. It also creates the
-contract, implementation-plan, and ADR-index projections without overwriting
-pre-existing conflicts. `--force` is required for that legacy-config replacement.
 
 Every new scaffold records hashes in `.gitbbq/ownership.json`. Run
 `git-bbq uninstall [path] --json` to review removable files; only
@@ -108,14 +99,27 @@ inventory; planning rejects duplicate or older release tags.
 The plugin package is built from the same Go CLI:
 
 ```sh
-python3 scripts/build_git_bbq_plugin.py --force
+python3 scripts/build_git_bbq_plugin.py --output plugins/git-bbq --target all --force
+python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --target all
 ```
 
 The package exposes the structured `Git BBQ` identity and direct `$git-bbq`
-skill, and installs exactly five required hooks: `UserPromptSubmit`,
+skill through a portable root `plugin.json` plus a Codex compatibility
+manifest. It installs exactly five required hooks: `UserPromptSubmit`,
 `PreToolUse`, `PostToolUse`, `PostCompact`, and `Stop`. The runtime accepts one
 JSON event on standard input and fails closed when the current workspace lacks a
 valid Git BBQ manifest or hook configuration.
+
+Lifecycle hooks are package-defined and host-trusted. After installation, use
+`/hooks` in Codex CLI to review and trust the current definition; changing the
+hook definition requires another review. `git-bbq help hooks` documents the
+runtime syntax but cannot grant host-level trust.
+
+The repository marketplace at `.agents/plugins/marketplace.json` is named
+`git-bbq-local`. Add it with `codex plugin marketplace add .`, install
+`git-bbq@git-bbq-local`, restart the Codex host, review the bundled hooks with
+`/hooks`, and test in a new thread. Git BBQ uses a skills-only marketplace shape
+and does not require an MCP server.
 
 Generate public contract schemas with:
 
@@ -136,6 +140,7 @@ silently changes the pinned dependency.
 
 New projects record the upstream Matt repository and commit under
 `.agents/mattpocock/DEPENDENCY.yaml`. The initial pin is upstream
-`c55ee460`; an independently maintained semantic-parity fork can replace it
+`c55ee46073ed923f86ce59a5eb3b6d895095d1b7`; an independently maintained
+semantic-parity fork can replace it
 later through an explicit update workflow. Git BBQ does not silently fetch or
 replace a project dependency during validation.

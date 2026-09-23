@@ -25,7 +25,6 @@ func TestScaffoldWritesMattNativeOutputs(t *testing.T) {
 		GitHabitsFilename,
 		ContextFilename,
 		"AGENTS.md",
-		"CLAUDE.md",
 		ContextMapFilename,
 		MattDependencyMetadataPath,
 		SessionPath,
@@ -38,10 +37,8 @@ func TestScaffoldWritesMattNativeOutputs(t *testing.T) {
 			t.Fatalf("missing %s: %v", relative, err)
 		}
 	}
-	for _, forbidden := range []string{".ai-architect", ".adr-scaffold.yaml"} {
-		if _, err := os.Stat(filepath.Join(root, forbidden)); !os.IsNotExist(err) {
-			t.Fatalf("legacy path exists: %s", forbidden)
-		}
+	if _, err := os.Stat(filepath.Join(root, "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("legacy compatibility file was created or returned unexpected error: %v", err)
 	}
 	agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
 	if err != nil {
@@ -112,9 +109,6 @@ func TestProjectGeneratesProjectionsWithoutSecondADRSet(t *testing.T) {
 			t.Fatalf("missing projection %s: %v", relative, err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(root, ".ai-architect")); !os.IsNotExist(err) {
-		t.Fatal("projection recreated the legacy artifact root")
-	}
 }
 
 func TestScaffoldLeavesADRDirectoryLazy(t *testing.T) {
@@ -150,4 +144,13 @@ func TestValidateProjectRejectsDriftedDependencyMetadata(t *testing.T) {
 	if err := ValidateProject(root); err == nil {
 		t.Fatal("drifted dependency metadata was accepted")
 	}
+}
+
+func containsPath(paths []string, expected string) bool {
+	for _, path := range paths {
+		if path == expected {
+			return true
+		}
+	}
+	return false
 }

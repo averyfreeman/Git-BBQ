@@ -39,7 +39,10 @@ jobs:
           cache: true
       - name: Build Linux plugin package
         run: python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-plugin --target x86_64-linux --force
+      - name: Validate plugin package
+        run: python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --target x86_64-linux
       - name: Verify packaged hooks and runtime
         run: |
           test -x .tmp/git-bbq-plugin/runtime/git-bbq/git-bbq
+          test -x .tmp/git-bbq-plugin/runtime/bin/x86_64-linux/git-bbq
           test "$(python3 -c 'import json; print(len(json.load(open(".tmp/git-bbq-plugin/hooks/hooks.json"))["hooks"]))')" = "5"
