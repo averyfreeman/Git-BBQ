@@ -21,3 +21,6 @@ pytest-cache-files-*/
 
 # Runtime artifacts created while exercising bundled demo projects.
 /demo/**/.gitbbq/
+# sonar-hook-verify.js
+# above was for example of sonar secret detection -- works!
+.env*
