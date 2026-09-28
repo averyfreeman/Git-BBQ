@@ -8,7 +8,7 @@ publication.
 
 - Plugin ID: git-bbq
 - Display name: Git BBQ
-- Version: 0.2.0
+- Version: 0.2.3-skills-prep
 - Category: Developer Tools
 - Repository: https://github.com/averyfreeman/git-bbq
 - Capabilities: Read and Write

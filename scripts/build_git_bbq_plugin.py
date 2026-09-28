@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import json
 import os
 import platform
@@ -15,7 +16,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VERSION = "0.2.0"
+DEFAULT_VERSION = "0.2.3-skills-prep"
 MATT_REPOSITORY = "https://github.com/mattpocock/skills.git"
 MATT_COMMIT = "c55ee46073ed923f86ce59a5eb3b6d895095d1b7"
 MATT_SKILL_PATHS = (
@@ -105,6 +106,25 @@ TARGETS = {
 }
 
 
+@dataclass(frozen=True)
+class SkillSource:
+    """Describe a pinned skill source independently from package assembly."""
+
+    repository: str
+    commit: str
+    source_root: str
+    skill_paths: tuple[str, ...]
+    transform: bool = True
+
+
+LEGACY_MATT_SOURCE = SkillSource(
+    repository=MATT_REPOSITORY,
+    commit=MATT_COMMIT,
+    source_root="skills",
+    skill_paths=MATT_SKILL_PATHS,
+)
+
+
 def current_target() -> str:
     system = platform.system().lower()
     machine = platform.machine().lower()
@@ -133,18 +153,22 @@ def git_head(path: Path) -> str | None:
     return result.stdout.strip()
 
 
-def local_pinned_matt_source() -> Path | None:
+def local_pinned_source(source_spec: SkillSource) -> Path | None:
     local_sources = (ROOT / ".agents/skills", ROOT / ".agents/mattpocock/skills")
     for candidate in local_sources:
-        if candidate.is_dir() and git_head(candidate) == MATT_COMMIT:
-            return candidate
+        if not candidate.is_dir() or git_head(candidate) != source_spec.commit:
+            continue
+        nested_source = candidate / source_spec.source_root
+        if nested_source.is_dir():
+            return nested_source
+        return candidate
     return None
 
 
-def copy_matt_skills(output: Path) -> None:
-    source = local_pinned_matt_source()
+def copy_matt_skills(output: Path, source_spec: SkillSource = LEGACY_MATT_SOURCE) -> None:
+    source = local_pinned_source(source_spec)
     if source is not None:
-        copy_matt_skill_directories(source, output)
+        copy_skill_directories(source, output, source_spec)
         return
     with tempfile.TemporaryDirectory(prefix="git-bbq-matt-") as temporary:
         checkout = Path(temporary) / "skills"
@@ -154,37 +178,38 @@ def copy_matt_skills(output: Path) -> None:
                 "clone",
                 "--filter=blob:none",
                 "--no-checkout",
-                MATT_REPOSITORY,
+                source_spec.repository,
                 str(checkout),
             ],
             cwd=ROOT,
             check=True,
         )
         subprocess.run(  # noqa: S603 - fixed checkout and pinned commit
-            ["git", "-C", str(checkout), "checkout", "--detach", MATT_COMMIT],  # noqa: S607
+            ["git", "-C", str(checkout), "checkout", "--detach", source_spec.commit],  # noqa: S607
             cwd=ROOT,
             check=True,
         )
-        if git_head(checkout) != MATT_COMMIT:
-            raise SystemExit(f"Matt checkout is not pinned to {MATT_COMMIT}")
-        source = checkout / "skills"
+        if git_head(checkout) != source_spec.commit:
+            raise SystemExit(f"skill checkout is not pinned to {source_spec.commit}")
+        source = checkout / source_spec.source_root
         if not source.is_dir():
             raise SystemExit(f"pinned Matt checkout has no skills directory: {source}")
-        copy_matt_skill_directories(source, output)
+        copy_skill_directories(source, output, source_spec)
 
 
-def copy_matt_skill_directories(source: Path, output: Path) -> None:
+def copy_skill_directories(source: Path, output: Path, source_spec: SkillSource) -> None:
     destination_root = output / "skills"
     destination_root.mkdir(parents=True, exist_ok=True)
-    for relative_path in MATT_SKILL_PATHS:
+    for relative_path in source_spec.skill_paths:
         skill = source / relative_path
         if not (skill / "SKILL.md").is_file():
             raise SystemExit(f"pinned Matt skill is missing SKILL.md: {relative_path}")
         relative_name = "-".join(Path(relative_path).parts)
         destination = destination_root / f"mattpocock-{relative_name}"
         shutil.copytree(skill, destination)
-        sanitize_skill_directory(destination)
-        rewrite_curated_skill(relative_path, destination)
+        if source_spec.transform:
+            sanitize_skill_directory(destination)
+            rewrite_curated_skill(relative_path, destination)
 
 
 def preserve_case(replacement: str, value: str) -> str:

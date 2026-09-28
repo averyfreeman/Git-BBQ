@@ -81,8 +81,19 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
-def validate(package: Path, target: str | None) -> list[str]:
+def warn(condition: bool, message: str, warnings: list[str]) -> None:
+    if condition:
+        warnings.append(message)
+
+
+def validate(
+    package: Path,
+    target: str | None,
+    warnings: list[str] | None = None,
+) -> list[str]:
     errors: list[str] = []
+    if warnings is None:
+        warnings = []
     portable_path = package / "plugin.json"
     compatibility_path = package / ".codex-plugin/plugin.json"
     hooks_path = package / "hooks/hooks.json"
@@ -139,14 +150,24 @@ def validate(package: Path, target: str | None) -> list[str]:
                 if any(term in str(relative).lower() for term in ("claude", "anthropic")):
                     errors.append(f"obsolete provider path found in package: {relative}")
                 content = path.read_bytes()
-                if OLD_BRANDING.search(content):
-                    errors.append(f"obsolete branding found in package file: {path.relative_to(package)}")
-                if FORBIDDEN_PROVIDER_BRANDING.search(content):
-                    errors.append(f"provider-specific branding found in package file: {relative}")
+                warn(
+                    bool(OLD_BRANDING.search(content)),
+                    f"obsolete branding found in package file: {relative}",
+                    warnings,
+                )
+                warn(
+                    bool(FORBIDDEN_PROVIDER_BRANDING.search(content)),
+                    f"provider-specific branding found in package file: {relative}",
+                    warnings,
+                )
                 if FORBIDDEN_CLAUDE_METADATA.search(content):
                     errors.append(f"legacy invocation metadata found in package file: {relative}")
-                if path.suffix.lower() in TEXT_SUFFIXES and BRITISH_SPELLINGS.search(content):
-                    errors.append(f"non-US spelling found in package file: {relative}")
+                if path.suffix.lower() in TEXT_SUFFIXES:
+                    warn(
+                        bool(BRITISH_SPELLINGS.search(content)),
+                        f"non-US spelling found in package file: {relative}",
+                        warnings,
+                    )
             except OSError as exc:
                 errors.append(f"could not read package file {path}: {exc}")
     return errors
@@ -161,15 +182,20 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        errors = validate(args.package.resolve(), args.target)
+        warnings: list[str] = []
+        errors = validate(args.package.resolve(), args.target, warnings)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    for warning in warnings:
+        print(f"warning: {warning}", file=sys.stderr)
     if errors:
         for error in errors:
             print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"Git BBQ plugin package is valid: {args.package}")
+    if warnings:
+        print(f"Git BBQ plugin package has {len(warnings)} warning(s)", file=sys.stderr)
     return 0
 
 

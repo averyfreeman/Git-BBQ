@@ -38,6 +38,11 @@ Package changes follow this order:
 
 The package build accepts a local Matt checkout only when its Git `HEAD` exactly
 matches the pinned commit; otherwise it checks out the pinned upstream commit.
+The source acquisition seam is intentionally isolated from package assembly so a
+future Git BBQ-ready skills repository can replace the source without changing
+runtime packaging. This preparation release still uses the upstream source and
+the existing build-time Codex and US-English rewrites; the derivative repository
+and submodule are deferred to `v0.3.0`.
 The optional `lavish-axi` CLI may be used to review HTML architecture or
 prototype artifacts, but it is not a package dependency.
 

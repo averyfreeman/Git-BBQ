@@ -9,7 +9,7 @@ import (
 
 const (
 	ToolName                   = "git-bbq"
-	ToolVersion                = "0.2.0"
+	ToolVersion                = "0.2.3-skills-prep"
 	SchemaVersion              = "1.0.0"
 	ManifestFilename           = ".gitbbq-manifest.yaml"
 	GitHabitsFilename          = ".githabits.yaml"

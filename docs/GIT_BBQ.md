@@ -136,6 +136,11 @@ An explicit `git-bbq update --approve --commit <pin>` changes the Matt dependenc
 pin in both the manifest and its dependency metadata. Validation never fetches or
 silently changes the pinned dependency.
 
+The `v0.2.3-skills-prep` release keeps new projects on the upstream Matt pin while
+making the plugin source seam and dependency transition path explicit. The
+maintained derivative repository and submodule-backed skill selection are reserved
+for `v0.3.0`, after the complete upstream skill review.
+
 ## External Matt dependency
 
 New projects record the upstream Matt repository and commit under

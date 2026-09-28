@@ -90,6 +90,24 @@ func TestPlanGitActionRejectsNonSemverTag(t *testing.T) {
 	}
 }
 
+func TestPlanGitActionAcceptsSkillsPreparationPrereleaseTag(t *testing.T) {
+	config, err := GitHabitsForProfile("autonomous")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := PlanGitAction(config, GitActionTag, GitPlanRequest{
+		Tag:          "v0.2.3-skills-prep",
+		ExistingTags: []string{"v0.2.2"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Allowed {
+		t.Fatalf("skills preparation tag was not allowed: %#v", plan)
+	}
+}
+
 func TestPlanGitActionRejectsNonMonotonicTag(t *testing.T) {
 	config, err := GitHabitsForProfile("autonomous")
 	if err != nil {
