@@ -8,7 +8,7 @@ publication.
 
 - Plugin ID: git-bbq
 - Display name: Git BBQ
-- Version: 0.2.3-skills-prep
+- Version: 0.3.0
 - Category: Developer Tools
 - Repository: https://github.com/averyfreeman/git-bbq
 - Capabilities: Read and Write
@@ -20,10 +20,11 @@ projects validated architecture documents, and plans guarded Git operations.
 The bundled hooks are deterministic and fail closed when the workspace does
 not contain a valid Git BBQ project contract.
 
-The packaged skill set is intentionally limited to ADR creation, architecture
-revision, code revision, and documentation revision. Matt skills are imported
-from the pinned commit, provider-specific references are removed or rewritten
-for Codex, and copied prose is normalized to US English.
+The packaged skill set contains the 16-entry selection recorded in the generated
+Matt skills manifest. Skills are imported from the maintained derivative pin,
+provider-specific references are removed or rewritten for Codex, canonical
+public names are applied at packaging time, and copied prose is normalized to
+US English.
 
 ## Starter prompts
 

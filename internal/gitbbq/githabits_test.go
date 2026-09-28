@@ -90,21 +90,21 @@ func TestPlanGitActionRejectsNonSemverTag(t *testing.T) {
 	}
 }
 
-func TestPlanGitActionAcceptsSkillsPreparationPrereleaseTag(t *testing.T) {
+func TestPlanGitActionAcceptsGitBBQ030Tag(t *testing.T) {
 	config, err := GitHabitsForProfile("autonomous")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	plan, err := PlanGitAction(config, GitActionTag, GitPlanRequest{
-		Tag:          "v0.2.3-skills-prep",
-		ExistingTags: []string{"v0.2.2"},
+		Tag:          "v0.3.0",
+		ExistingTags: []string{"v0.2.3-skills-prep"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !plan.Allowed {
-		t.Fatalf("skills preparation tag was not allowed: %#v", plan)
+		t.Fatalf("Git BBQ v0.3.0 tag was not allowed: %#v", plan)
 	}
 }
 

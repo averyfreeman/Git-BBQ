@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "git-bbq",
-  "version": "0.2.3-skills-prep",
+  "version": "0.3.0",
   "description": "Local repository scaffolding, durable architecture records, and guarded Git workflows for coding agents.",
   "author": {
     "name": "Avery Freeman",

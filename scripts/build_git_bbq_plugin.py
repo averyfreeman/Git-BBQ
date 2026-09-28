@@ -16,25 +16,14 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VERSION = "0.2.3-skills-prep"
-MATT_REPOSITORY = "https://github.com/mattpocock/skills.git"
-MATT_COMMIT = "c55ee46073ed923f86ce59a5eb3b6d895095d1b7"
-MATT_SKILL_PATHS = (
-    "engineering/ask-matt",
-    "engineering/code-review",
-    "engineering/codebase-design",
-    "engineering/diagnosing-bugs",
-    "engineering/domain-modeling",
-    "engineering/grill-with-docs",
-    "engineering/implement",
-    "engineering/improve-codebase-architecture",
-    "engineering/prototype",
-    "engineering/research",
-    "engineering/resolving-merge-conflicts",
-    "engineering/tdd",
-    "productivity/grilling",
-    "productivity/writing-for-agents",
-)
+DEFAULT_VERSION = "0.3.0"
+SKILLS_REPOSITORY = "https://github.com/averyfreeman/git-bbq-matt-skills.git"
+SKILLS_COMMIT = "64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa"
+CURATION_FILENAME = "git-bbq-curation.json"
+SELECTION_MANIFEST_FILENAME = "skills/matt-skills-manifest.json"
+PACKAGED_STATUSES = frozenset({"keep", "alias"})
+CURATION_STATUSES = frozenset({"keep", "hold", "alias", "omit"})
+PUBLIC_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 US_ENGLISH_REPLACEMENTS = {
     "behaviour": "behavior",
     "behaviours": "behaviors",
@@ -107,22 +96,27 @@ TARGETS = {
 
 
 @dataclass(frozen=True)
+class CuratedSkill:
+    """Describe one manifest entry selected for Git BBQ packaging."""
+
+    source_path: str
+    public_name: str
+    alias_of: str | None
+
+
+@dataclass(frozen=True)
 class SkillSource:
-    """Describe a pinned skill source independently from package assembly."""
+    """Describe a pinned derivative source and its manifest-driven selection."""
 
     repository: str
     commit: str
+    checkout: Path
     source_root: str
-    skill_paths: tuple[str, ...]
+    selection: tuple[CuratedSkill, ...]
     transform: bool = True
 
 
-LEGACY_MATT_SOURCE = SkillSource(
-    repository=MATT_REPOSITORY,
-    commit=MATT_COMMIT,
-    source_root="skills",
-    skill_paths=MATT_SKILL_PATHS,
-)
+SOURCE_PIN = (SKILLS_REPOSITORY, SKILLS_COMMIT)
 
 
 def current_target() -> str:
@@ -153,63 +147,227 @@ def git_head(path: Path) -> str | None:
     return result.stdout.strip()
 
 
-def local_pinned_source(source_spec: SkillSource) -> Path | None:
-    local_sources = (ROOT / ".agents/skills", ROOT / ".agents/mattpocock/skills")
-    for candidate in local_sources:
-        if not candidate.is_dir() or git_head(candidate) != source_spec.commit:
-            continue
-        nested_source = candidate / source_spec.source_root
-        if nested_source.is_dir():
-            return nested_source
+def local_pinned_checkout(source_spec: SkillSource) -> Path | None:
+    candidate = ROOT / ".agents/skills"
+    if candidate.is_dir() and git_head(candidate) == source_spec.commit:
         return candidate
     return None
 
 
-def copy_matt_skills(output: Path, source_spec: SkillSource = LEGACY_MATT_SOURCE) -> None:
-    source = local_pinned_source(source_spec)
-    if source is not None:
-        copy_skill_directories(source, output, source_spec)
+def load_pinned_source(checkout: Path, repository: str, commit: str) -> SkillSource:
+    manifest_path = checkout / CURATION_FILENAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"could not read derivative curation manifest {manifest_path}: {exc}") from exc
+    selection = validate_curation(manifest, checkout)
+    derivative = manifest.get("derivative", {})
+    if derivative.get("repository") != repository:
+        raise SystemExit(
+            "curation manifest derivative repository does not match the pinned package source: "
+            f"{derivative.get('repository')!r}"
+        )
+    return SkillSource(
+        repository=repository,
+        commit=commit,
+        checkout=checkout,
+        source_root="skills",
+        selection=tuple(selection),
+    )
+
+
+def copy_matt_skills(output: Path, source_spec: SkillSource | None = None) -> None:
+    if isinstance(source_spec, SkillSource):
+        repository = source_spec.repository
+        commit = source_spec.commit
+        checkout = source_spec.checkout
+    else:
+        repository, commit = SOURCE_PIN
+        checkout = None
+        candidate = ROOT / ".agents/skills"
+        if candidate.is_dir() and git_head(candidate) == commit:
+            checkout = candidate
+
+    if checkout is not None:
+        pinned_source = load_pinned_source(checkout, repository, commit)
+        copy_skill_directories(pinned_source, output)
         return
-    with tempfile.TemporaryDirectory(prefix="git-bbq-matt-") as temporary:
-        checkout = Path(temporary) / "skills"
-        subprocess.run(  # noqa: S603 - fixed upstream repository and arguments
+
+    with tempfile.TemporaryDirectory(prefix="git-bbq-skills-") as temporary:
+        checkout = Path(temporary) / "git-bbq-matt-skills"
+        subprocess.run(  # noqa: S603 - fixed derivative repository and arguments
             [
                 "git",
                 "clone",
                 "--filter=blob:none",
                 "--no-checkout",
-                source_spec.repository,
+                repository,
                 str(checkout),
             ],
             cwd=ROOT,
             check=True,
         )
         subprocess.run(  # noqa: S603 - fixed checkout and pinned commit
-            ["git", "-C", str(checkout), "checkout", "--detach", source_spec.commit],  # noqa: S607
+            ["git", "-C", str(checkout), "checkout", "--detach", commit],  # noqa: S607
             cwd=ROOT,
             check=True,
         )
-        if git_head(checkout) != source_spec.commit:
-            raise SystemExit(f"skill checkout is not pinned to {source_spec.commit}")
-        source = checkout / source_spec.source_root
-        if not source.is_dir():
-            raise SystemExit(f"pinned Matt checkout has no skills directory: {source}")
-        copy_skill_directories(source, output, source_spec)
+        if git_head(checkout) != commit:
+            raise SystemExit(f"derivative checkout is not pinned to {commit}")
+        pinned_source = load_pinned_source(checkout, repository, commit)
+        copy_skill_directories(pinned_source, output)
 
 
-def copy_skill_directories(source: Path, output: Path, source_spec: SkillSource) -> None:
+def copy_skill_directories(source_spec: SkillSource, output: Path) -> None:
     destination_root = output / "skills"
     destination_root.mkdir(parents=True, exist_ok=True)
-    for relative_path in source_spec.skill_paths:
-        skill = source / relative_path
+    name_map = {Path(item.source_path).name: item.public_name for item in source_spec.selection}
+    write_selection_manifest(output, source_spec)
+    for item in source_spec.selection:
+        skill = source_spec.checkout / item.source_path
         if not (skill / "SKILL.md").is_file():
-            raise SystemExit(f"pinned Matt skill is missing SKILL.md: {relative_path}")
-        relative_name = "-".join(Path(relative_path).parts)
-        destination = destination_root / f"mattpocock-{relative_name}"
+            raise SystemExit(f"pinned derivative skill is missing SKILL.md: {item.source_path}")
+        destination = destination_root / f"mattpocock-{item.public_name}"
         shutil.copytree(skill, destination)
         if source_spec.transform:
-            sanitize_skill_directory(destination)
-            rewrite_curated_skill(relative_path, destination)
+            sanitize_skill_directory(destination, name_map)
+            rewrite_curated_skill(item.source_path, destination, item.public_name)
+
+
+def validate_curation(manifest: dict, repository_root: Path) -> list[CuratedSkill]:
+    if not isinstance(manifest, dict):
+        raise SystemExit("curation manifest must be a JSON object")
+    if manifest.get("schemaVersion") != 2:
+        raise SystemExit("curation manifest schemaVersion must be 2")
+    allowed_statuses = manifest.get("statuses")
+    if (
+        not isinstance(allowed_statuses, list)
+        or len(allowed_statuses) != len(CURATION_STATUSES)
+        or not all(isinstance(value, str) for value in allowed_statuses)
+        or set(allowed_statuses) != CURATION_STATUSES
+    ):
+        raise SystemExit("curation manifest statuses must be keep, hold, alias, and omit")
+    entries = manifest.get("skills")
+    if not isinstance(entries, list):
+        raise SystemExit("curation manifest skills must be an array")
+
+    skills_root = repository_root / "skills"
+    discovered_paths = {
+        path.parent.relative_to(repository_root).as_posix()
+        for path in skills_root.rglob("SKILL.md")
+    } if skills_root.is_dir() else set()
+    seen_paths: set[str] = set()
+    by_path: dict[str, dict] = {}
+    by_public_name: dict[str, dict] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise SystemExit("curation manifest entries must be objects")
+        path = entry.get("path")
+        if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
+            raise SystemExit(f"curation manifest has invalid skill path: {path!r}")
+        if path in seen_paths:
+            raise SystemExit(f"curation manifest has duplicate skill path: {path}")
+        seen_paths.add(path)
+        by_path[path] = entry
+        status = entry.get("status")
+        if status not in allowed_statuses or status not in CURATION_STATUSES:
+            raise SystemExit(f"curation manifest has invalid status {status!r} for {path}")
+        public_name = entry.get("publicName")
+        if status in PACKAGED_STATUSES:
+            if not isinstance(public_name, str) or not PUBLIC_NAME_PATTERN.fullmatch(public_name):
+                raise SystemExit(f"packaged curation entry needs a valid publicName: {path}")
+            if public_name in by_public_name:
+                raise SystemExit(f"curation manifest has duplicate public name: {public_name}")
+            by_public_name[public_name] = entry
+            if status == "keep" and entry.get("aliasOf") is not None:
+                raise SystemExit(f"canonical curation entry cannot define aliasOf: {path}")
+        elif public_name is not None or entry.get("aliasOf") is not None:
+            raise SystemExit(f"non-packaged curation entry cannot define publicName or aliasOf: {path}")
+
+        dependencies = entry.get("dependencies", [])
+        if not isinstance(dependencies, list) or not all(isinstance(value, str) for value in dependencies):
+            raise SystemExit(f"curation manifest dependencies must be strings: {path}")
+
+    missing_entries = sorted(discovered_paths - seen_paths)
+    missing_source_paths = sorted(seen_paths - discovered_paths)
+    if missing_entries:
+        raise SystemExit("curation manifest is missing source paths: " + ", ".join(missing_entries))
+    if missing_source_paths:
+        raise SystemExit("curation manifest references missing source paths: " + ", ".join(missing_source_paths))
+    if len(seen_paths) != len(entries):
+        raise SystemExit("curation manifest contains duplicate skill paths")
+
+    for path, entry in by_path.items():
+        for dependency in entry.get("dependencies", []):
+            if dependency not in by_path:
+                raise SystemExit(f"curation manifest dependency does not name a source path: {path} -> {dependency}")
+
+    def resolve_target(target: str) -> dict | None:
+        if target in by_path:
+            return by_path[target]
+        return by_public_name.get(target)
+
+    visiting: set[str] = set()
+    resolved: set[str] = set()
+
+    def visit(path: str) -> None:
+        if path in resolved:
+            return
+        if path in visiting:
+            raise SystemExit(f"curation manifest alias cycle includes: {path}")
+        visiting.add(path)
+        entry = by_path[path]
+        if entry["status"] == "alias":
+            target = entry.get("aliasOf")
+            if not isinstance(target, str) or not target:
+                raise SystemExit(f"alias curation entry needs aliasOf: {path}")
+            target_entry = resolve_target(target)
+            if target_entry is None:
+                raise SystemExit(f"alias targets an unknown skill: {path} -> {target}")
+            target_path = next(
+                candidate_path for candidate_path, candidate in by_path.items() if candidate is target_entry
+            )
+            if target_entry["status"] not in PACKAGED_STATUSES:
+                raise SystemExit(f"alias targets a non-packaged skill: {path} -> {target}")
+            visit(target_path)
+        visiting.remove(path)
+        resolved.add(path)
+
+    for path in by_path:
+        visit(path)
+
+    return [
+        CuratedSkill(
+            source_path=entry["path"],
+            public_name=entry["publicName"],
+            alias_of=entry.get("aliasOf"),
+        )
+        for entry in entries
+        if entry["status"] in PACKAGED_STATUSES
+    ]
+
+
+def write_selection_manifest(output: Path, source_spec: SkillSource) -> None:
+    records = []
+    for item in source_spec.selection:
+        records.append(
+            {
+                "sourcePath": item.source_path,
+                "publicName": item.public_name,
+                "aliasOf": item.alias_of,
+                "repository": source_spec.repository,
+                "commit": source_spec.commit,
+            }
+        )
+    manifest = {
+        "$schema": "https://github.com/averyfreeman/git-bbq/blob/main/schemas/gitbbq/matt-skills-manifest.schema.json",
+        "repository": source_spec.repository,
+        "commit": source_spec.commit,
+        "skills": records,
+    }
+    path = output / SELECTION_MANIFEST_FILENAME
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
 
 def preserve_case(replacement: str, value: str) -> str:
@@ -234,7 +392,26 @@ def sanitize_text(content: str) -> str:
     return normalize_us_english(content)
 
 
-def sanitize_skill_directory(skill_directory: Path) -> None:
+def rewrite_skill_references(content: str, name_map: dict[str, str]) -> str:
+    for source_name in sorted(name_map, key=len, reverse=True):
+        public_name = name_map[source_name]
+        invocation = re.compile(
+            rf"(?P<prefix>[$/]){re.escape(source_name)}(?![A-Za-z0-9_-])",
+            re.IGNORECASE,
+        )
+        content = invocation.sub(
+            lambda match: match.group("prefix") + public_name,
+            content,
+        )
+        quoted = re.compile(
+            rf"(?P<quote>[`\"']){re.escape(source_name)}(?P=quote)",
+            re.IGNORECASE,
+        )
+        content = quoted.sub(lambda match: match.group("quote") + public_name + match.group("quote"), content)
+    return content
+
+
+def sanitize_skill_directory(skill_directory: Path, name_map: dict[str, str]) -> None:
     for path in skill_directory.rglob("*"):
         if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
             continue
@@ -242,7 +419,7 @@ def sanitize_skill_directory(skill_directory: Path) -> None:
             content = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
             continue
-        sanitized = sanitize_text(content)
+        sanitized = rewrite_skill_references(sanitize_text(content), name_map)
         if sanitized != content:
             path.write_text(sanitized, encoding="utf-8")
 
@@ -254,45 +431,138 @@ def rewrite_text_file(path: Path, replacements: tuple[tuple[str, str], ...]) -> 
     path.write_text(content, encoding="utf-8")
 
 
-def rewrite_curated_skill(relative_path: str, destination: Path) -> None:
+def set_skill_frontmatter_name(path: Path, public_name: str) -> None:
+    content = path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(?m)^name:\s*[^\n]+$",
+        f"name: {public_name}",
+        content,
+        count=1,
+    )
+    if count != 1:
+        raise SystemExit(f"skill frontmatter has no name field: {path}")
+    path.write_text(updated, encoding="utf-8")
+
+
+def set_skill_public_metadata(skill_directory: Path, public_name: str) -> None:
+    path = skill_directory / "agents/openai.yaml"
+    if not path.is_file():
+        return
+    content = path.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r"(?m)^(\s*display_name:\s*).+$",
+        rf'\1"{public_name}"',
+        content,
+        count=1,
+    )
+    if count == 1:
+        path.write_text(updated, encoding="utf-8")
+
+
+def rewrite_curated_skill(relative_path: str, destination: Path, public_name: str) -> None:
+    if relative_path.startswith("skills/"):
+        relative_path = relative_path.removeprefix("skills/")
     if relative_path == "engineering/ask-matt":
         template_root = ROOT / "adapters/codex/templates/matt/ask-matt"
         copy_file(template_root / "SKILL.md", destination / "SKILL.md")
         copy_file(template_root / "PHASE-BOUNDARIES.md", destination / "PHASE-BOUNDARIES.md")
-        return
 
     if relative_path == "engineering/code-review":
         rewrite_text_file(
             destination / "SKILL.md",
             (
                 (
-                    "The issue tracker should have been provided to you. If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.",
+                    "Runs both reviews in parallel sub-agents and reports them side by side.",
+                    "Runs both reviews in parallel when available, with a sequential or inline fallback, and reports them side by side.",
+                ),
+                (
+                    "Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.",
+                    "Run both axes in parallel sub-agents when available. If parallel orchestration is unavailable, run them sequentially or inline. In every mode, aggregate the same side-by-side report so the Standards and Spec contract is unchanged.",
+                ),
+                (
+                    "The issue tracker should have been provided to you.",
                     "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
+                ),
+                (
+                    "If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.",
+                    "Use a path the user supplied as the spec source, or an ADR/spec under `docs/`, `specs/`, or `.scratch/`. If nothing is available, report `no spec available` and keep the Spec axis separate from Standards.",
                 ),
                 (
                     "1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in `docs/agents/issue-tracker.md`.\n2. A path the user passed as an argument.\n3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.\n4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report \"no spec available\".",
                     "1. A path the user supplied as the spec source.\n2. An ADR or spec under `docs/`, `specs/`, or `.scratch/` matching the branch or feature.\n3. A relevant locally available commit-message reference.\n4. If nothing is found, report \"no spec available\" and keep the Spec axis separate from Standards.",
                 ),
+                (
+                    "If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.",
+                    "If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
+                ),
+                (
+                    "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards. Use a path the user supplied as the spec source, or an ADR/spec under `docs/`, `specs/`, or `.scratch/`. If nothing is available, report `no spec available` and keep the Spec axis separate from Standards.",
+                    "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
+                ),
             ),
         )
 
-    if relative_path == "engineering/improve-codebase-architecture":
+    if relative_path == "engineering/codebase-design":
         rewrite_text_file(
             destination / "SKILL.md",
             (
                 (
-                    "Write a self-contained HTML file to the OS temp directory so nothing lands in the repo. Resolve the temp dir from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows), and write to `<tmpdir>/architecture-review-<timestamp>.html` so each run gets a fresh file. Open it for the user (`xdg-open <path>` on Linux, `open <path>` on macOS, `start <path>` on Windows) and tell them the absolute path.",
-                    "Write a self-contained HTML file to the OS temp directory so nothing lands in the repo. Resolve the temp dir from `$TMPDIR`, falling back to `/tmp` or `%TEMP%`, and write to `<tmpdir>/architecture-review-<timestamp>.html`. If `lavish-axi` is available, run `lavish-axi <path>` and keep `lavish-axi poll <path>` in the foreground when the user wants an annotation loop; otherwise use the host's direct-open command. Keep local assets relative so direct-open and `lavish-axi export` remain usable.",
+                    "Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): spin up parallel sub-agents to design the interface several radically different ways, then compare on depth, locality, and seam placement.",
+                    "Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): use parallel sub-agents when available, or run the independent designs sequentially or inline, then compare on depth, locality, and seam placement.",
                 ),
             ),
         )
         rewrite_text_file(
-            destination / "HTML-REPORT.md",
+            destination / "DESIGN-IT-TWICE.md",
             (
                 (
-                    "The architectural review is rendered as a single self-contained HTML file in the OS temp directory. Tailwind and Mermaid both come from CDNs. Mermaid handles graph-shaped diagrams reliably; hand-built divs and inline SVG handle the more editorial visuals (mass diagrams, cross-sections). Mix the two: don't lean on Mermaid for everything, it'll start to look generic.",
-                    "The architectural review is rendered as a single portable HTML file in the OS temp directory. Keep local assets relative, give the page an explicit background, and preserve direct-open behavior. Use inline SVG for ordinary diagrams; use Mermaid only when the user explicitly wants an editable Lavish whiteboard. When available, `lavish-axi <path>` provides the Codex review surface and `lavish-axi export <path>` provides a portable copy.",
+                    "When the user wants to explore alternative interfaces for a chosen deepening candidate, use this parallel sub-agent pattern.",
+                    "When the user wants to explore alternative interfaces for a chosen deepening candidate, use parallel sub-agents when available; otherwise run the same independent design briefs sequentially or inline. Preserve the same five-part output for every design.",
                 ),
+                (
+                    "Before spawning sub-agents, write a user-facing explanation of the problem space for the chosen candidate:",
+                    "Before running the alternative designs, write a user-facing explanation of the problem space for the chosen candidate:",
+                ),
+                (
+                    "Show this to the user, then immediately proceed to Step 2. The user reads and thinks while the sub-agents work in parallel.",
+                    "Show this to the user, then immediately proceed to Step 2. Parallel workers may run while the user reads; if the host cannot orchestrate them, run the same briefs sequentially or inline.",
+                ),
+                ("### 2. Spawn sub-agents", "### 2. Run the design alternatives"),
+                (
+                    "Spawn 3+ sub-agents in parallel. Each must produce a **radically different** interface for the deepened module.",
+                    "When parallel orchestration is available, run 3+ sub-agents in parallel. Otherwise run 3+ independent briefs sequentially or inline. Each must produce a **radically different** interface for the deepened module.",
+                ),
+                ("Prompt each sub-agent with a separate technical brief", "Give each design a separate technical brief"),
+                ("Each sub-agent outputs:", "Each design outputs:"),
+            ),
+        )
+
+    if relative_path == "productivity/grilling":
+        rewrite_text_file(
+            destination / "SKILL.md",
+            (
+                (
+                    "Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.",
+                    "Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent when the host provides one. If sub-agent orchestration is unavailable, perform the same bounded fact-finding inline or sequentially; never ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the result; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.",
+                ),
+            ),
+        )
+
+    if relative_path == "engineering/diagnosing-bugs":
+        rewrite_text_file(
+            destination / "SKILL.md",
+            (("`/improve-codebase-architecture`", "a later architecture review"),),
+        )
+
+    if relative_path == "engineering/research":
+        rewrite_text_file(
+            destination / "SKILL.md",
+            (
+                (
+                    "Spin up a **background agent** to do the research, so you keep working while it reads.",
+                    "Run the research in a background agent when the host provides one. If background orchestration is unavailable, run the same work inline or sequentially. In every mode, preserve the same single cited Markdown artifact contract.",
+                ),
+                ("Its job:", "The research worker's job:"),
             ),
         )
 
@@ -306,6 +576,9 @@ def rewrite_curated_skill(relative_path: str, destination: Path) -> None:
                 ),
             ),
         )
+
+    set_skill_frontmatter_name(destination / "SKILL.md", public_name)
+    set_skill_public_metadata(destination, public_name)
 
 
 def compatibility_manifest(portable: dict) -> dict:

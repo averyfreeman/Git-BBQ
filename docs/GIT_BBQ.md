@@ -24,7 +24,7 @@ project contains:
 | `.gitbbq-manifest.yaml` | Project problem, languages, pinned Matt dependency, and hooks |
 | `AGENTS.md` | Thin Codex agent router |
 | `.agents/skills/` | Githabits plus selected language skills |
-| `.agents/mattpocock/DEPENDENCY.yaml` | Upstream repository and commit pin |
+| `.agents/mattpocock/DEPENDENCY.yaml` | Maintained Matt-skills derivative repository and commit pin |
 | `architecture-contract.yaml` | Generated contract projection |
 | `implementation-plan.md` | Generated implementation projection |
 | `docs/adr/index.json` | Generated ADR retrieval projection |
@@ -136,16 +136,16 @@ An explicit `git-bbq update --approve --commit <pin>` changes the Matt dependenc
 pin in both the manifest and its dependency metadata. Validation never fetches or
 silently changes the pinned dependency.
 
-The `v0.2.3-skills-prep` release keeps new projects on the upstream Matt pin while
-making the plugin source seam and dependency transition path explicit. The
-maintained derivative repository and submodule-backed skill selection are reserved
-for `v0.3.0`, after the complete upstream skill review.
+The `v0.3.0` release pins the maintained derivative source at `v0.2.0` and makes
+its curation manifest authoritative. The package contains 16 canonical Matt
+entrypoints, including `grill-no-docs` as an alias of `grill`; source paths and
+upstream history remain in the derivative repository.
 
 ## External Matt dependency
 
-New projects record the upstream Matt repository and commit under
-`.agents/mattpocock/DEPENDENCY.yaml`. The initial pin is upstream
-`c55ee46073ed923f86ce59a5eb3b6d895095d1b7`; an independently maintained
-semantic-parity fork can replace it
-later through an explicit update workflow. Git BBQ does not silently fetch or
-replace a project dependency during validation.
+New projects record the maintained derivative repository and commit under
+`.agents/mattpocock/DEPENDENCY.yaml`. The `v0.3.0` pin is
+`https://github.com/averyfreeman/git-bbq-matt-skills.git` at
+`64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa` (`v0.2.0`). The existing downstream
+dependency path contract remains `.agents/mattpocock`. Git BBQ does not silently
+fetch or replace a project dependency during validation.

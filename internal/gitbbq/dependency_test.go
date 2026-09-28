@@ -6,20 +6,27 @@ import (
 	"testing"
 )
 
+func TestDefaultManifestUsesGitBBQSkillsDerivative(t *testing.T) {
+	manifest := DefaultManifest("Example")
+	if manifest.Matt.Repository != MattRepository || manifest.Matt.Commit != MattCommit || manifest.Matt.Path != MattDependencyPath {
+		t.Fatalf("manifest Matt dependency = %#v", manifest.Matt)
+	}
+}
+
 func TestUpdateMattDependencyKeepsProjectPathAndMetadataInSync(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "example")
 	if _, err := ScaffoldProject(root, ScaffoldOptions{ProjectName: "Example", Problem: "Pin skills safely.", Languages: []string{"go"}}); err != nil {
 		t.Fatal(err)
 	}
 	updated, err := UpdateMattDependency(root, MattDependency{
-		Repository: "https://github.com/example/skills.git",
-		Commit:     "0123456789abcdef",
+		Repository: MattRepository,
+		Commit:     MattCommit,
 		Path:       MattDependencyPath,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Matt.Commit != "0123456789abcdef" {
+	if updated.Matt.Repository != MattRepository || updated.Matt.Commit != MattCommit {
 		t.Fatalf("manifest = %#v", updated.Matt)
 	}
 	if err := ValidateProject(root); err != nil {
@@ -36,5 +43,19 @@ func TestUpdateMattDependencyKeepsProjectPathAndMetadataInSync(t *testing.T) {
 		if containsPath(assessment.Conflicts, relative) {
 			t.Fatalf("updated dependency artifact remained a conflict: %#v", assessment.Conflicts)
 		}
+	}
+}
+
+func TestUpdateMattDependencyRejectsPathDrift(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "example")
+	if _, err := ScaffoldProject(root, ScaffoldOptions{ProjectName: "Example", Problem: "Pin skills safely.", Languages: []string{"go"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := UpdateMattDependency(root, MattDependency{
+		Repository: MattRepository,
+		Commit:     MattCommit,
+		Path:       ".agents/other-skills",
+	}); err == nil {
+		t.Fatal("expected dependency path drift to be rejected")
 	}
 }

@@ -24,25 +24,26 @@ go build ./cmd/git-bbq
 go run ./cmd/git-bbq schema .
 python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-plugin --target x86_64-linux --force
 python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --target x86_64-linux
+PYTHONPATH=scripts python3 -m unittest scripts/test_build_git_bbq_plugin.py
 ```
 
 ## Skill packaging workflow
 
 Package changes follow this order:
 
-1. Resolve the exact Matt skills commit recorded in the build script.
-2. Copy only the curated ADR, architecture, code, and documentation skills.
-3. Remove provider-specific features and rewrite retained references for Codex.
-4. Normalize copied text to US English.
-5. Build and validate the Codex plugin package.
+1. Resolve the exact derivative commit recorded in the build script and verify
+   the checked-in `.agents/skills` submodule.
+2. Parse `git-bbq-curation.json` and require all 38 source paths to be present.
+3. Copy only `keep` and `alias` entries, using their manifest `publicName`.
+4. Rewrite provider-specific features and retained cross-skill references for
+   Codex while preserving each report or artifact contract.
+5. Normalize copied text to US English, build, and validate the Codex package.
 
-The package build accepts a local Matt checkout only when its Git `HEAD` exactly
-matches the pinned commit; otherwise it checks out the pinned upstream commit.
-The source acquisition seam is intentionally isolated from package assembly so a
-future Git BBQ-ready skills repository can replace the source without changing
-runtime packaging. This preparation release still uses the upstream source and
-the existing build-time Codex and US-English rewrites; the derivative repository
-and submodule are deferred to `v0.3.0`.
+The package build accepts the `.agents/skills` checkout only when its Git `HEAD`
+exactly matches the pinned derivative commit; otherwise it temporarily clones
+that same derivative repository at the pin. It never falls back to the upstream
+Matt repository. The generated `skills/matt-skills-manifest.json` records every
+packaged source path, public name, alias, repository, and commit.
 The optional `lavish-axi` CLI may be used to review HTML architecture or
 prototype artifacts, but it is not a package dependency.
 

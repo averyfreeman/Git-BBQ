@@ -148,8 +148,10 @@ python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq
 
 The package contains exactly five lifecycle hooks and embeds the `git-bbq`
 runtime for the four supported targets. Matt skills are copied from the exact
-pinned upstream commit, filtered to the ADR, architecture, code, and document
-revision allowlist, rewritten for Codex, and normalized to US English.
+`.agents/skills` derivative pin, selected by `git-bbq-curation.json`, renamed to
+their canonical v0.3 public names, rewritten for Codex, and normalized to US
+English. The package records the selection in
+`skills/matt-skills-manifest.json`.
 
 To make it available in Codex CLI and ChatGPT desktop:
 

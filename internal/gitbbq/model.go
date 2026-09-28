@@ -9,7 +9,7 @@ import (
 
 const (
 	ToolName                   = "git-bbq"
-	ToolVersion                = "0.2.3-skills-prep"
+	ToolVersion                = "0.3.0"
 	SchemaVersion              = "1.0.0"
 	ManifestFilename           = ".gitbbq-manifest.yaml"
 	GitHabitsFilename          = ".githabits.yaml"
@@ -25,8 +25,8 @@ const (
 	OwnershipFilename          = ".gitbbq/ownership.json"
 	MattDependencyMetadataPath = ".agents/mattpocock/DEPENDENCY.yaml"
 	MattDependencyPath         = ".agents/mattpocock"
-	MattRepository             = "https://github.com/mattpocock/skills.git"
-	MattCommit                 = "c55ee46073ed923f86ce59a5eb3b6d895095d1b7"
+	MattRepository             = "https://github.com/averyfreeman/git-bbq-matt-skills.git"
+	MattCommit                 = "64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa"
 )
 
 var SupportedLanguages = []string{"go", "python", "typescript", "javascript", "rust", "java", "csharp"}

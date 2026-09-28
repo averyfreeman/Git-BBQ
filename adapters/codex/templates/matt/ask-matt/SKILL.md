@@ -1,37 +1,40 @@
 ---
-name: ask-matt
-description: Ask which packaged ADR, architecture, code, or documentation workflow fits the current repository task.
+name: find-grill
+description: Ask which Git BBQ v0.3 skill fits the current repository task.
+policy.allow_implicit_invocation: false
 ---
 
-# Ask Matt
+# Find grill
 
-Use this router when the right engineering workflow is unclear. Choose the
-narrowest packaged skill that produces the artifact or decision the repository
-needs.
+Use this router when the right Git BBQ workflow is unclear. Choose the
+narrowest final v0.3 entrypoint that produces the needed decision, artifact, or
+change.
 
 ## Decision map
 
-- **Create or revise an ADR or domain glossary** → `$grill-with-docs`, then
-  `$domain-modeling` as terminology or decisions crystallize.
-- **Revise architecture** → `$improve-codebase-architecture` to surface
-  candidates, `$codebase-design` to shape the chosen module, and `$prototype`
-  when a state model or interface needs a runnable answer.
-- **Implement a known change** → `$tdd`, then `$implement`, then `$code-review`.
-- **Diagnose a hard bug or regression** → `$diagnosing-bugs`; escalate to
-  `$improve-codebase-architecture` when the missing seam is the finding.
-- **Investigate an external technical question** → `$research`, then carry
-  the cited findings into `$grill-with-docs` or an ADR.
-- **Resolve an in-progress merge or rebase** → `$resolving-merge-conflicts`.
-- **Revise agent-facing documentation or a skill** → `$writing-for-agents`.
-- **Stress-test a plan without recording documents yet** → `$grilling`.
-
-## Shared vocabulary
-
-Use `$codebase-design` for module, interface, depth, seam, adapter, leverage,
-and locality. Use `$domain-modeling` for project terminology, `CONTEXT.md`, and
-architectural decisions. Keep `docs/adr/` as the decision source of truth.
+- **Sharpen a repository plan and update its vocabulary or ADRs** →
+  `$grill-for-docs`.
+- **Sharpen a plan without repository documents** → `$grill-no-docs`.
+- **Implement a known change** → `$fire-away`; use `$test-first` for a focused
+  red-green slice and `$review-code` for a review.
+- **Diagnose a hard bug or regression** → `$debug`.
+- **Design a module, interface, or seam** → `$design-project`.
+- **Prototype a state model or UI** → `$prototype`.
+- **Investigate a technical question and save cited findings** → `$research`.
+- **Resolve an in-progress merge or rebase conflict** →
+  `$fix-merge-or-rebase`.
+- **Strengthen project language, glossary, or ADR vocabulary** →
+  `$strengthen-vocabulary`.
+- **Recover from a misunderstood request** → `$clarify`.
+- **Write or revise an agent-facing skill or instruction** →
+  `$write-agent-docs`.
+- **Review a branch, work-in-progress, or change against a fixed point** →
+  `$review-code`.
+- **Create a session or environment retrospective** →
+  `$create-retrospective`.
 
 ## Completion
 
-When a route produces a durable decision, capture it in the repository's ADR or
-context documents. When it produces code, finish with tests and `$code-review`.
+Route to one final v0.3 entrypoint. If the selected workflow invokes another
+entrypoint, use only the canonical names listed above and preserve that
+workflow's stated report or artifact contract.
