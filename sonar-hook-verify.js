@@ -1,0 +1,1 @@
+const API_KEY = "sqp_b4556a16fa2d28519d2451a911d2e073024010bc";
