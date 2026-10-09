@@ -118,12 +118,26 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
-def validate(package: Path, target: str | None, warnings: list[str] | None = None) -> list[str]:
+def object_field(parent: dict, key: str, context: str, errors: list[str]) -> dict:
+    value = parent.get(key, {})
+    if not isinstance(value, dict):
+        errors.append(f"{context}.{key} must be an object")
+        return {}
+    return value
+
+
+def validate(
+    package: Path,
+    target: str | None,
+    variant: str = "local",
+    warnings: list[str] | None = None,
+) -> list[str]:
     del warnings  # The validator reports conformance errors; upstream wording remains untouched.
     errors: list[str] = []
+    if variant not in {"local", "public"}:
+        return [f"unsupported plugin variant {variant!r}; choose local or public"]
     portable = load_json(package / "plugin.json")
     compatibility = load_json(package / ".codex-plugin/plugin.json")
-    hooks = load_json(package / "hooks/hooks.json")
     _selection_manifest, selection = load_selection_manifest(package)
 
     require(portable.get("name") == "git-bbq", "portable name must be git-bbq", errors)
@@ -132,8 +146,24 @@ def validate(package: Path, target: str | None, warnings: list[str] | None = Non
         "portable manifest must declare the Agent Plugins schema",
         errors,
     )
-    openai = portable.get("extensions", {}).get("com.openai", {})
-    require(openai.get("hooks") == "./hooks/hooks.json", "OpenAI hooks path is incorrect", errors)
+    extensions = object_field(portable, "extensions", "plugin.json", errors)
+    openai = object_field(extensions, "com.openai", "plugin.json.extensions", errors)
+    if variant == "local":
+        require(openai.get("hooks") == "./hooks/hooks.json", "OpenAI hooks path is incorrect", errors)
+        try:
+            hooks = load_json(package / "hooks/hooks.json")
+        except ValueError as exc:
+            hooks = {}
+            errors.append(str(exc))
+        hook_config = hooks.get("hooks", {})
+        if not isinstance(hook_config, dict):
+            errors.append("hooks/hooks.json: hooks must be an object")
+            hook_config = {}
+        hook_events = set(hook_config)
+        require(hook_events == REQUIRED_EVENTS, "hook events must be exactly the five Git BBQ events", errors)
+    else:
+        require("hooks" not in openai, "public manifest must not reference lifecycle hooks", errors)
+        require(not (package / "hooks").exists(), "public package must not contain hook files", errors)
     onboarding_skill = openai.get("onboardingSkill")
     require(
         onboarding_skill == ONBOARDING_SKILL,
@@ -145,7 +175,7 @@ def validate(package: Path, target: str | None, warnings: list[str] | None = Non
         "OpenAI onboardingSkill does not resolve to a packaged skill",
         errors,
     )
-    interface = openai.get("interface", {})
+    interface = object_field(openai, "interface", "plugin.json.extensions.com.openai", errors)
     for field in ("displayName", "shortDescription", "longDescription", "developerName", "category"):
         require(bool(interface.get(field)), f"OpenAI interface field is missing: {field}", errors)
     short_description = interface.get("shortDescription", "")
@@ -154,7 +184,13 @@ def validate(package: Path, target: str | None, warnings: list[str] | None = Non
     require(isinstance(prompts, list) and len(prompts) <= 3, "OpenAI defaultPrompt must have at most three entries", errors)
     require(compatibility.get("name") == "git-bbq", "compatibility name must be git-bbq", errors)
     require("hooks" not in compatibility, "compatibility manifest must use hook autodiscovery", errors)
-    compatibility_openai = compatibility.get("extensions", {}).get("com.openai", {})
+    compatibility_extensions = object_field(compatibility, "extensions", ".codex-plugin/plugin.json", errors)
+    compatibility_openai = object_field(
+        compatibility_extensions,
+        "com.openai",
+        ".codex-plugin/plugin.json.extensions",
+        errors,
+    )
     require(
         compatibility_openai.get("onboardingSkill") == onboarding_skill,
         "Codex compatibility manifest must declare the same onboardingSkill",
@@ -165,11 +201,18 @@ def validate(package: Path, target: str | None, warnings: list[str] | None = Non
         "compatibility manifest must use hook autodiscovery",
         errors,
     )
-    require(bool(compatibility.get("author", {}).get("name")), "compatibility author is missing", errors)
-    require(bool(compatibility.get("interface", {}).get("developerName")), "compatibility developerName is missing", errors)
+    compatibility_author = object_field(compatibility, "author", ".codex-plugin/plugin.json", errors)
+    compatibility_interface = object_field(compatibility, "interface", ".codex-plugin/plugin.json", errors)
+    require(bool(compatibility_author.get("name")), "compatibility author is missing", errors)
+    require(bool(compatibility_interface.get("developerName")), "compatibility developerName is missing", errors)
 
-    hook_events = set(hooks.get("hooks", {}))
-    require(hook_events == REQUIRED_EVENTS, "hook events must be exactly the five Git BBQ events", errors)
+    if variant == "public":
+        for manifest_path in (package / "plugin.json", package / ".codex-plugin/plugin.json"):
+            try:
+                manifest_text = manifest_path.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            require('"hooks"' not in manifest_text, f"public manifest contains a hook reference: {manifest_path.name}", errors)
     require((package / "assets/logo.svg").is_file(), "logo asset is missing", errors)
     require((package / "licenses/mattpocock-skills/LICENSE").is_file(), "upstream skill license is missing", errors)
     require((package / "runtime/git-bbq/git-bbq").is_file(), "POSIX launcher is missing", errors)
@@ -191,6 +234,16 @@ def validate(package: Path, target: str | None, warnings: list[str] | None = Non
         require(name == skill_dir.name, f"skill name must match its parent directory: {skill_dir.name}", errors)
         require(len(name) <= 64, f"skill name exceeds 64 characters: {skill_dir.name}", errors)
         require("--" not in name, f"skill name contains consecutive hyphens: {skill_dir.name}", errors)
+    if variant == "public":
+        try:
+            builtin_skill = (skills_root / "git-bbq/SKILL.md").read_text(encoding="utf-8")
+        except OSError:
+            builtin_skill = ""
+        require(
+            "git-bbq help hooks" not in builtin_skill and "local-hooks:" not in builtin_skill,
+            "public Git BBQ skill must omit local hook instructions",
+            errors,
+        )
 
     runtime_root = package / "runtime/bin"
     runtime_targets = [path for path in runtime_root.iterdir() if path.is_dir()] if runtime_root.is_dir() else []
@@ -212,9 +265,10 @@ def main() -> int:
         "--target",
         choices=["all", "aarch64-darwin", "x86_64-darwin", "x86_64-linux", "windows-x86_64"],
     )
+    parser.add_argument("--variant", choices=["local", "public"], default="local")
     args = parser.parse_args()
     try:
-        errors = validate(args.package.resolve(), args.target)
+        errors = validate(args.package.resolve(), args.target, args.variant)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

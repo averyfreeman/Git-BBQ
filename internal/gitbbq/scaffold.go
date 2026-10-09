@@ -14,9 +14,6 @@ func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, erro
 	if root == "." {
 		root, _ = os.Getwd()
 	}
-	if err := prepareRoot(root, options.AllowHere); err != nil {
-		return ScaffoldResult{}, err
-	}
 	name := strings.TrimSpace(options.ProjectName)
 	if name == "" {
 		name = filepath.Base(root)
@@ -42,6 +39,9 @@ func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, erro
 		}
 	}
 	if err := ValidateGitHabits(gitHabits); err != nil {
+		return ScaffoldResult{}, err
+	}
+	if err := prepareRoot(root, options.AllowHere); err != nil {
 		return ScaffoldResult{}, err
 	}
 	result := ScaffoldResult{Root: root, Created: []string{}, Skipped: []string{}}
@@ -79,7 +79,7 @@ func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, erro
 	if err := write(HookConfigPath, hooks); err != nil {
 		return ScaffoldResult{}, err
 	}
-	if err := write("AGENTS.md", []byte(renderAgents())); err != nil {
+	if err := write("AGENTS.md", []byte(renderAgents(languages))); err != nil {
 		return ScaffoldResult{}, err
 	}
 	dependencyData, err := marshalYAML(manifest.Matt)
@@ -164,7 +164,7 @@ func Project(root string) (Projection, error) {
 }
 
 func projectWithOptions(root string, force bool) (Projection, []string, error) {
-	if err := ValidateProject(root); err != nil {
+	if err := validateProject(root, false); err != nil {
 		return Projection{}, nil, err
 	}
 	manifest, err := loadManifest(root)
@@ -175,17 +175,7 @@ func projectWithOptions(root string, force bool) (Projection, []string, error) {
 	if err != nil {
 		return Projection{}, nil, err
 	}
-	contract := ArchitectureContract{
-		SchemaVersion: SchemaVersion,
-		Revision:      1,
-		Scope:         manifest.ProjectName,
-		Problem:       manifest.Problem,
-		Languages:     manifest.Languages,
-		ADRFiles:      make([]string, 0, len(index.Decisions)),
-	}
-	for _, record := range index.Decisions {
-		contract.ADRFiles = append(contract.ADRFiles, filepath.ToSlash(filepath.Join(ADRDirectory, record.Filename)))
-	}
+	contract := buildArchitectureContract(manifest, index)
 	contractData, err := marshalYAML(contract)
 	if err != nil {
 		return Projection{}, nil, err
@@ -217,6 +207,21 @@ func projectWithOptions(root string, force bool) (Projection, []string, error) {
 		return Projection{}, nil, err
 	}
 	return Projection{ADRCount: index.DecisionCount, Paths: paths}, created, nil
+}
+
+func buildArchitectureContract(manifest Manifest, index ADRIndex) ArchitectureContract {
+	contract := ArchitectureContract{
+		SchemaVersion: SchemaVersion,
+		Revision:      1,
+		Scope:         manifest.ProjectName,
+		Problem:       manifest.Problem,
+		Languages:     append([]string(nil), manifest.Languages...),
+		ADRFiles:      make([]string, 0, len(index.Decisions)),
+	}
+	for _, record := range index.Decisions {
+		contract.ADRFiles = append(contract.ADRFiles, filepath.ToSlash(filepath.Join(ADRDirectory, record.Filename)))
+	}
+	return contract
 }
 
 func SnapshotFiles(root string) ([]string, error) {
@@ -265,8 +270,21 @@ func prepareRoot(root string, allowHere bool) error {
 	return nil
 }
 
-func renderAgents() string {
-	return "# Agent instructions\n\nRead [CONTEXT.md](./CONTEXT.md) for project vocabulary, then consult relevant records under [docs/adr](./docs/adr).\n\nFocused operating skills live under `.agents/skills/`. The Matt Pocock skills dependency is pinned under `.agents/mattpocock/`.\n\nUse `git-bbq validate` before persisting architecture projections. Git behavior is governed by `.githabits.yaml`.\n"
+func renderAgents(languages []string) string {
+	var builder strings.Builder
+	builder.WriteString("# Agent instructions\n\nRead [CONTEXT.md](./CONTEXT.md) for project vocabulary, then consult relevant records under [docs/adr](./docs/adr).\n\nFocused operating skills live under `.agents/skills/`. The Matt Pocock skills dependency is pinned under `.agents/mattpocock/`.\n")
+	if len(languages) > 0 {
+		builder.WriteString("\n## Language profiles\n\nLoad the matching language skill before making changes to that part of the codebase:\n")
+		for _, language := range sortedLanguages(languages) {
+			profile, ok := ProfileForLanguage(language)
+			if !ok {
+				continue
+			}
+			builder.WriteString(fmt.Sprintf("- [%s](./.agents/skills/%s/SKILL.md)\n", profile.DisplayName, language))
+		}
+	}
+	builder.WriteString("\nUse `git-bbq validate` before persisting architecture projections. Git behavior is governed by `.githabits.yaml`.\n")
+	return builder.String()
 }
 
 func renderContext(name string) string {
@@ -282,29 +300,11 @@ func renderGithabitsSkill() string {
 }
 
 func renderLanguageSkill(language string) string {
-	name := languageDisplayName(language)
-	return fmt.Sprintf("---\nname: %s\ndescription: Project-specific %s conventions.\n---\n\n# %s\n\nUse the repository's existing structure and keep changes aligned with approved Matt architecture decisions. Load this skill only when working with %s code.\n", language, language, name, language)
-}
-
-func languageDisplayName(language string) string {
-	switch language {
-	case "go":
-		return "Go"
-	case "python":
-		return "Python"
-	case "typescript":
-		return "TypeScript"
-	case "javascript":
-		return "JavaScript"
-	case "rust":
-		return "Rust"
-	case "java":
-		return "Java"
-	case "csharp":
-		return "C#"
-	default:
-		return language
+	profile, ok := ProfileForLanguage(language)
+	if !ok {
+		profile = LanguageProfile{Language: language, DisplayName: language}
 	}
+	return fmt.Sprintf("---\nname: %s\ndescription: Project-specific %s conventions.\n---\n\n# %s\n\nUse the repository's existing structure and keep changes aligned with approved Matt architecture decisions. Load this skill only when working with %s code.\n\n## Common commands\n\nThese are starting points, not assumptions about scripts configured by this repository. Prefer commands declared by the project and its CI configuration.\n\n- Build: `%s`\n- Test: `%s`\n- Format: `%s`\n\n## Documentation\n\nUse %s and update project documentation when behavior or public interfaces change.\n", profile.Language, strings.ToLower(profile.DisplayName), profile.DisplayName, profile.DisplayName, profile.Build, profile.Test, profile.Format, profile.Documentation)
 }
 
 func renderImplementationPlan(manifest Manifest, index ADRIndex) string {
@@ -315,7 +315,22 @@ func renderImplementationPlan(manifest Manifest, index ADRIndex) string {
 	builder.WriteString(manifest.Problem)
 	builder.WriteString("\n\n## Languages\n\n")
 	builder.WriteString(strings.Join(manifest.Languages, ", "))
-	builder.WriteString("\n\n## Decisions\n\n")
+	builder.WriteString("\n\n## Language profiles\n\n")
+	for _, profile := range LanguageProfileGuidance(manifest.Languages) {
+		builder.WriteString("### ")
+		builder.WriteString(profile.DisplayName)
+		builder.WriteString("\n\n")
+		builder.WriteString("- Build: `")
+		builder.WriteString(profile.Build)
+		builder.WriteString("`\n- Test: `")
+		builder.WriteString(profile.Test)
+		builder.WriteString("`\n- Format: `")
+		builder.WriteString(profile.Format)
+		builder.WriteString("`\n- Documentation: ")
+		builder.WriteString(profile.Documentation)
+		builder.WriteString("\n\n")
+	}
+	builder.WriteString("## Decisions\n\n")
 	if len(index.Decisions) == 0 {
 		builder.WriteString("No ADRs have been recorded yet.\n")
 		return builder.String()

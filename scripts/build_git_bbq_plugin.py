@@ -285,6 +285,22 @@ def copy_skill_directories(source_spec: SkillSource, output: Path) -> None:
         adapt_agent_skills_frontmatter(destination / "SKILL.md", destination)
 
 
+def copy_gitbbq_skill(output: Path, variant: str) -> None:
+    source = ROOT / "adapters/codex/templates/git-bbq-skill.md"
+    content = source.read_text(encoding="utf-8")
+    marker_start = "<!-- local-hooks:start -->\n"
+    marker_end = "<!-- local-hooks:end -->\n"
+    if variant == "public":
+        start = content.index(marker_start)
+        end = content.index(marker_end, start) + len(marker_end)
+        content = content[:start] + content[end:]
+    else:
+        content = content.replace(marker_start, "").replace(marker_end, "")
+    destination = output / "skills/git-bbq/SKILL.md"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(content, encoding="utf-8")
+
+
 def adapt_agent_skills_frontmatter(skill_path: Path, skill_directory: Path) -> None:
     content = skill_path.read_text(encoding="utf-8")
     match = re.match(r"\A---\r?\n(?P<frontmatter>.*?)\r?\n---(?P<rest>\r?\n.*)\Z", content, re.DOTALL)
@@ -379,6 +395,21 @@ def compatibility_manifest(portable: dict) -> dict:
     return compatibility
 
 
+def manifest_for_variant(portable: dict, variant: str) -> dict:
+    if variant not in {"local", "public"}:
+        raise SystemExit(f"unsupported plugin variant {variant!r}; choose local or public")
+    manifest = json.loads(json.dumps(portable))
+    openai = manifest.get("extensions", {}).get("com.openai", {})
+    if variant == "public":
+        openai.pop("hooks", None)
+        interface = openai.get("interface", {})
+        interface["longDescription"] = (
+            "Git BBQ provides durable project context, architecture records, "
+            "language guidance, and guarded Git workflows through a local Codex CLI."
+        )
+    return manifest
+
+
 def write_launchers(output: Path) -> None:
     launcher = output / "runtime/git-bbq/git-bbq"
     launcher.parent.mkdir(parents=True, exist_ok=True)
@@ -434,7 +465,9 @@ def build(args: argparse.Namespace) -> Path:
         shutil.rmtree(output)
 
     manifest_path = ROOT / "adapters/codex/templates/git-bbq-plugin.json"
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest = manifest_for_variant(
+        json.loads(manifest_path.read_text(encoding="utf-8")), args.variant
+    )
     manifest["version"] = args.plugin_version
     output.mkdir(parents=True, exist_ok=True)
     (output / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -443,14 +476,12 @@ def build(args: argparse.Namespace) -> Path:
     (output / ".codex-plugin/plugin.json").write_text(
         json.dumps(compatibility, indent=2) + "\n", encoding="utf-8"
     )
-    copy_file(ROOT / "adapters/codex/templates/git-bbq-hooks.json", output / "hooks/hooks.json")
+    if args.variant == "local":
+        copy_file(ROOT / "adapters/codex/templates/git-bbq-hooks.json", output / "hooks/hooks.json")
     copy_file(ROOT / "adapters/codex/templates/git-bbq-openai.yaml", output / "openai.yaml")
     copy_file(ROOT / "assets/logo.svg", output / "assets/logo.svg")
     copy_file(ROOT / "THIRD_PARTY_NOTICES.md", output / "THIRD_PARTY_NOTICES.md")
-    copy_file(
-        ROOT / "adapters/codex/templates/git-bbq-skill.md",
-        output / "skills/git-bbq/SKILL.md",
-    )
+    copy_gitbbq_skill(output, args.variant)
 
     copy_matt_skills(output)
 
@@ -467,10 +498,13 @@ def build(args: argparse.Namespace) -> Path:
         runtime_paths.append(runtime_path)
     write_launchers(output)
 
-    required_events = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PostCompact", "Stop"}
-    hook_config = json.loads((output / "hooks/hooks.json").read_text(encoding="utf-8"))
-    if set(hook_config.get("hooks", {})) != required_events:
-        raise SystemExit("Git BBQ plugin must package exactly the five required lifecycle hooks")
+    if args.variant == "local":
+        required_events = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PostCompact", "Stop"}
+        hook_config = json.loads((output / "hooks/hooks.json").read_text(encoding="utf-8"))
+        if set(hook_config.get("hooks", {})) != required_events:
+            raise SystemExit("local Git BBQ plugin must package exactly the five required lifecycle hooks")
+    elif (output / "hooks").exists():
+        raise SystemExit("public Git BBQ plugin must not package lifecycle hook files")
     if not all(path.is_file() for path in runtime_paths):
         raise SystemExit("one or more Go runtime targets were not built")
     if not (output / "plugin.json").is_file():
@@ -485,6 +519,7 @@ def main() -> int:
     parser.add_argument("--output", default="dist/codex/git-bbq")
     parser.add_argument("--plugin-version", default=DEFAULT_VERSION)
     parser.add_argument("--target", choices=["all", *sorted(TARGETS)])
+    parser.add_argument("--variant", choices=["local", "public"], default="local")
     parser.add_argument("--go", default="go")
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()

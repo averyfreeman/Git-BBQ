@@ -46,15 +46,50 @@ Every new scaffold records hashes in `.gitbbq/ownership.json`. Run
 symlinked, reparse-point, and non-regular files or parent paths are reported as
 conflicts and preserved. Unowned directories are preserved as well.
 
-Language selection is explicit. Supported profiles are Go, Python, TypeScript,
-JavaScript, Rust, Java, and C#. Git profile selection is also explicit: `manual` and
+Supported language profiles are Go, Python, TypeScript, JavaScript, Rust, Java,
+and C#. Explicit `--language` values take precedence over saved project
+configuration and user preferences and bypass detection. Otherwise, interactive
+`init` and `apply` show all detected candidates with evidence paths, use any
+saved selection as the proposed set, and let the user confirm or edit the full
+set. A final confirmation is required before files are written. Non-interactive
+setup uses a saved project or user selection; if neither exists, it reports
+candidate evidence and stops without writing. Detection considers supported
+project markers and first-party source files in nested projects while skipping
+common generated and vendored directories.
+
+The generated `AGENTS.md`, focused language skills, and
+`implementation-plan.md` projection include profile-specific guidance and
+common command examples. They direct agents to prefer commands declared by the
+repository and its CI. Git profile selection is also explicit: `manual` and
 `guided` authorize no Git mutations by default, while `autonomous` enables the
 individual action switches until a project changes them.
 
 CLI flags take precedence over project configuration, and project configuration
-takes precedence over the optional user-level preference file. Interactive setup
-asks whether the selected profile and languages should be remembered. The
+takes precedence over the optional user-level preference file. Interactive
+setup asks whether the selected profile and languages should be remembered. The
 `--remember` flag makes that choice explicit in non-interactive use.
+
+`git-bbq validate` checks any existing architecture-contract, implementation
+plan, and ADR-index projections against their canonical inputs. It ignores the
+ADR index's volatile generation timestamp; ADR index paths are repository-
+relative so the projection survives repository moves. Validation reports
+projection drift with a `git-bbq project` repair instruction. Projection files
+remain optional until they are generated. Validation also scans bounded architecture and Git policy
+artifacts for secret-like values; diagnostics identify only the file, line, and
+finding type. `git-bbq project` validates canonical inputs and can regenerate
+stale projections.
+
+## Migrating AI Software Architect projects
+
+Run `git-bbq migrate [path]` to review a read-only assessment of an older
+`.adr-scaffold.yaml` and `.ai-architect/` project. The importer carries only
+validated language/problem fields and selected decision fields into Git BBQ's
+current manifest and Matt-native ADR format. It keeps legacy files in place,
+does not import the old structured contract or handoff, and reports target
+conflicts. Apply with `git-bbq migrate --approve [path]`. If the existing
+`.githabits.yaml` is incompatible, review the assessment and add
+`--archive-legacy-githabits` to preserve and replace it. See
+[the conversion and conflict rules](./agents/legacy-migration.md).
 
 The Git mutation seam has a read-only planning step and an explicit execution
 step:
@@ -99,8 +134,8 @@ inventory; planning rejects duplicate or older release tags.
 The plugin package is built from the same Go CLI:
 
 ```sh
-python3 scripts/build_git_bbq_plugin.py --output plugins/git-bbq --target all --force
-python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --target all
+python3 scripts/build_git_bbq_plugin.py --output plugins/git-bbq --variant local --target all --force
+python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --variant local --target all
 ```
 
 The package exposes the structured `Git BBQ` identity and direct `$git-bbq`
@@ -121,6 +156,13 @@ The repository marketplace at `.agents/plugins/marketplace.json` is named
 `git-bbq@git-bbq-local`, restart the Codex host, review the bundled hooks with
 `/hooks`, and test in a new thread. Git BBQ uses a skills-only marketplace shape
 and does not require an MCP server.
+
+The builder also accepts `--variant public`, which omits lifecycle hook files,
+the OpenAI hook setting, and hook-specific instructions from the Git BBQ skill.
+It retains the curated skills and Go CLI runtime for local Codex execution.
+ChatGPT web installs receive the skills but cannot access a user's local
+repository or run the packaged local CLI without a remote integration. See
+`docs/PLUGIN_SUBMISSION.md` for current submission constraints.
 
 Generate public contract schemas with:
 

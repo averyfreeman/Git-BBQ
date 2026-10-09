@@ -137,22 +137,10 @@ func IndexADRs(root string) (ADRIndex, error) {
 }
 
 func indexADRs(root string, force bool) (ADRIndex, bool, error) {
-	paths := listADRPaths(root)
-	records := make([]ADRRecord, 0, len(paths))
-	numbers := make(map[int]bool, len(paths))
-	for _, path := range paths {
-		record, err := ParseADR(path)
-		if err != nil {
-			return ADRIndex{}, false, err
-		}
-		if numbers[record.Number] {
-			return ADRIndex{}, false, fmt.Errorf("duplicate ADR number %04d", record.Number)
-		}
-		numbers[record.Number] = true
-		records = append(records, record)
+	index, err := buildADRIndex(root)
+	if err != nil {
+		return ADRIndex{}, false, err
 	}
-	sort.Slice(records, func(i, j int) bool { return records[i].Number < records[j].Number })
-	index := ADRIndex{SchemaVersion: SchemaVersion, GeneratedAt: time.Now().UTC(), DecisionCount: len(records), Decisions: records}
 	if _, err := os.Stat(filepath.Join(root, ADRDirectory)); os.IsNotExist(err) {
 		return index, false, nil
 	} else if err != nil {
@@ -168,6 +156,28 @@ func indexADRs(root string, force bool) (ADRIndex, bool, error) {
 		return ADRIndex{}, false, err
 	}
 	return index, created, nil
+}
+
+func buildADRIndex(root string) (ADRIndex, error) {
+	paths := listADRPaths(root)
+	records := make([]ADRRecord, 0, len(paths))
+	numbers := make(map[int]bool, len(paths))
+	for _, path := range paths {
+		record, err := ParseADR(path)
+		if err != nil {
+			return ADRIndex{}, err
+		}
+		if numbers[record.Number] {
+			return ADRIndex{}, fmt.Errorf("duplicate ADR number %04d", record.Number)
+		}
+		numbers[record.Number] = true
+		// Index paths are package-relative so the projection remains portable
+		// when a repository moves between machines or directories.
+		record.Path = filepath.ToSlash(filepath.Join(ADRDirectory, record.Filename))
+		records = append(records, record)
+	}
+	sort.Slice(records, func(i, j int) bool { return records[i].Number < records[j].Number })
+	return ADRIndex{SchemaVersion: SchemaVersion, GeneratedAt: time.Now().UTC(), DecisionCount: len(records), Decisions: records}, nil
 }
 
 func listADRPaths(root string) []string {

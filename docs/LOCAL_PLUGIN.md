@@ -5,9 +5,10 @@ Build a local multi-platform package from the repository root:
 ~~~sh
 python3 scripts/build_git_bbq_plugin.py \
   --output plugins/git-bbq \
+  --variant local \
   --target all \
   --force
-python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq
+python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --variant local --target all
 ~~~
 
 Register and install the repository marketplace:
@@ -56,3 +57,24 @@ as the normal installation path.
 Git BBQ uses the skills-only marketplace shape with local Codex lifecycle hooks;
 it does not require an MCP server. Public submission remains separate from this
 local marketplace installation; see `PLUGIN_SUBMISSION.md` for release gates.
+
+## Public-oriented package preflight
+
+Build and validate a hook-free package separately from the local installation:
+
+~~~sh
+python3 scripts/build_git_bbq_plugin.py \
+  --output .tmp/git-bbq-public \
+  --variant public \
+  --target all \
+  --force
+python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-public \
+  --variant public \
+  --target all
+~~~
+
+The public variant contains the skills and Go CLI binaries but has no lifecycle
+hook configuration. The bundled CLI is usable only on an execution host that
+can run the local binary; installing the plugin on ChatGPT web does not grant
+local repository access or deploy that executable. A remote MCP integration
+would be needed for hosted repository operations.

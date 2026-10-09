@@ -7,7 +7,8 @@
   githabits planning, and approved execution.
 - `adapters/codex/templates` contains the portable plugin and Codex
   compatibility packaging contract.
-- `scripts/build_git_bbq_plugin.py` builds the dependency-free runtime package.
+- `scripts/build_git_bbq_plugin.py` builds local and public-oriented runtime
+  packages from shared sources.
 - `scripts/validate_git_bbq_plugin.py` validates the generated package,
   curated skill layout, hooks, runtimes, assets, branding, and language.
 
@@ -23,8 +24,10 @@ go test ./...
 go vet ./...
 go build ./cmd/git-bbq
 go run ./cmd/git-bbq schema .
-python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-plugin --target x86_64-linux --force
-python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --target x86_64-linux
+python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-plugin --variant local --target x86_64-linux --force
+python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --variant local --target x86_64-linux
+python3 scripts/build_git_bbq_plugin.py --output .tmp/git-bbq-public --variant public --target x86_64-linux --force
+python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-public --variant public --target x86_64-linux
 PYTHONPATH=scripts python3 -m unittest scripts/test_build_git_bbq_plugin.py
 ```
 
@@ -45,7 +48,8 @@ Package changes follow this order:
    namespaced standard metadata.
 5. Build both plugin manifests, declare the bundled setup skill as OpenAI
    onboarding in both manifests, and validate Agent Skills fields, discovery
-   paths, upstream names, hooks, runtimes, and OpenAI metadata constraints.
+   paths, upstream names, variant-specific hooks, runtimes, and OpenAI metadata
+   constraints.
 
 The package build accepts the `.agents/skills` checkout only when its Git
 `HEAD`, origin, and clean working tree match the upstream pin. It exports the
@@ -63,11 +67,13 @@ For plugin packaging:
 ```sh
 python3 scripts/build_git_bbq_plugin.py \
   --output .tmp/git-bbq-plugin \
+  --variant local \
   --target x86_64-linux \
   --force
-python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --target x86_64-linux
+python3 scripts/validate_git_bbq_plugin.py .tmp/git-bbq-plugin --variant local --target x86_64-linux
 ```
 
-Inspect the generated package for the portable manifest, compatibility
-manifest, five required hooks, direct skill directories, launchers, and
-embedded runtime before using a release tag.
+Inspect both generated packages for portable and compatibility manifests,
+direct skill directories, launchers, and embedded runtimes. The local variant
+has exactly five required hooks; the public variant has no hook directory or
+manifest hook reference.

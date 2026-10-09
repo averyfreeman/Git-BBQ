@@ -201,19 +201,8 @@ func ValidateManifest(manifest Manifest) error {
 	if strings.TrimSpace(manifest.Problem) == "" {
 		return fmt.Errorf("manifest problem is required")
 	}
-	if len(manifest.Languages) == 0 {
-		return fmt.Errorf("manifest language selection is required")
-	}
-	seen := map[string]bool{}
-	for _, language := range manifest.Languages {
-		language = strings.ToLower(strings.TrimSpace(language))
-		if !supportedLanguage(language) {
-			return fmt.Errorf("unsupported language %q", language)
-		}
-		if seen[language] {
-			return fmt.Errorf("duplicate language %q", language)
-		}
-		seen[language] = true
+	if err := ValidateLanguageSelection(manifest.Languages); err != nil {
+		return err
 	}
 	if manifest.Matt.Repository == "" || manifest.Matt.Commit == "" || manifest.Matt.Path == "" {
 		return fmt.Errorf("manifest Matt dependency must include repository, commit, and path")
@@ -223,6 +212,26 @@ func ValidateManifest(manifest Manifest) error {
 	}
 	if !manifest.Hooks.Enabled {
 		return fmt.Errorf("manifest hooks must remain enabled")
+	}
+	return nil
+}
+
+// ValidateLanguageSelection checks that a non-empty language set contains only
+// supported profiles and does not repeat a normalized language name.
+func ValidateLanguageSelection(languages []string) error {
+	if len(languages) == 0 {
+		return fmt.Errorf("at least one supported language is required")
+	}
+	seen := map[string]bool{}
+	for _, language := range languages {
+		language = normalizeLanguage(language)
+		if !supportedLanguage(language) {
+			return fmt.Errorf("unsupported language %q", language)
+		}
+		if seen[language] {
+			return fmt.Errorf("duplicate language %q", language)
+		}
+		seen[language] = true
 	}
 	return nil
 }

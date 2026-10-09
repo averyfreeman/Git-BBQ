@@ -8,8 +8,10 @@ from build_git_bbq_plugin import (
     CuratedSkill,
     SkillSource,
     compatibility_manifest,
+    copy_gitbbq_skill,
     copy_skill_directories,
     export_pinned_selection,
+    manifest_for_variant,
     validate_curation,
 )
 from validate_git_bbq_plugin import validate
@@ -303,6 +305,21 @@ class PackageValidationTests(unittest.TestCase):
         errors = validate(self.package, "x86_64-linux")
         self.assertTrue(any("must point to the bundled setup" in error for error in errors))
 
+    def test_reports_malformed_hook_configuration_without_crashing(self):
+        (self.package / "hooks/hooks.json").write_text(json.dumps({"hooks": []}), encoding="utf-8")
+        errors = validate(self.package, "x86_64-linux")
+        self.assertTrue(any("hooks must be an object" in error for error in errors))
+
+    def test_reports_malformed_nested_manifests_without_crashing(self):
+        for relative in ("plugin.json", ".codex-plugin/plugin.json"):
+            path = self.package / relative
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["extensions"] = []
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+        errors = validate(self.package, "x86_64-linux")
+        self.assertGreaterEqual(sum("must be an object" in error for error in errors), 2)
+
 
 class CompatibilityManifestTests(unittest.TestCase):
     def test_preserves_only_onboarding_from_openai_extension(self):
@@ -322,6 +339,90 @@ class CompatibilityManifestTests(unittest.TestCase):
             {"onboardingSkill": "./skills/setup-matt-pocock-skills/SKILL.md"},
         )
         self.assertNotIn("hooks", compatibility["extensions"]["com.openai"])
+
+
+class VariantManifestTests(unittest.TestCase):
+    def test_local_variant_keeps_hook_reference(self):
+        portable = {
+            "name": "git-bbq",
+            "extensions": {"com.openai": {"hooks": "./hooks/hooks.json", "interface": {}}},
+        }
+        local = manifest_for_variant(portable, "local")
+        self.assertEqual(local["extensions"]["com.openai"]["hooks"], "./hooks/hooks.json")
+        self.assertEqual(portable["extensions"]["com.openai"]["hooks"], "./hooks/hooks.json")
+
+    def test_public_variant_omits_hook_reference_and_describes_local_runtime(self):
+        portable = {
+            "name": "git-bbq",
+            "extensions": {
+                "com.openai": {
+                    "hooks": "./hooks/hooks.json",
+                    "interface": {"longDescription": "Includes lifecycle hooks."},
+                }
+            },
+        }
+        public = manifest_for_variant(portable, "public")
+        self.assertNotIn("hooks", public["extensions"]["com.openai"])
+        description = public["extensions"]["com.openai"]["interface"]["longDescription"]
+        self.assertIn("local Codex CLI", description)
+        self.assertIn("hooks", portable["extensions"]["com.openai"])
+
+    def test_rejects_unknown_variant(self):
+        with self.assertRaisesRegex(SystemExit, "choose local or public"):
+            manifest_for_variant({}, "cloud")
+
+    def test_public_git_bbq_skill_omits_local_hook_setup(self):
+        with tempfile.TemporaryDirectory(prefix="git-bbq-skill-variant-test-") as temporary:
+            output = Path(temporary)
+            copy_gitbbq_skill(output, "public")
+            skill = (output / "skills/git-bbq/SKILL.md").read_text(encoding="utf-8")
+            self.assertNotIn("<!-- local-hooks:", skill)
+            self.assertNotIn("git-bbq help hooks", skill)
+            self.assertNotIn("/hooks", skill)
+
+            copy_gitbbq_skill(output, "local")
+            local_skill = (output / "skills/git-bbq/SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("git-bbq help hooks", local_skill)
+            self.assertNotIn("<!-- local-hooks:", local_skill)
+
+
+class PluginVariantValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.package_tests = PackageValidationTests()
+        self.package_tests.setUp()
+        self.package = self.package_tests.package
+
+    def tearDown(self):
+        self.package_tests.tearDown()
+
+    def test_accepts_hook_free_public_variant_with_runtime_and_skills(self):
+        manifest_path = self.package / "plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        del manifest["extensions"]["com.openai"]["hooks"]
+        manifest["extensions"]["com.openai"]["interface"]["longDescription"] = (
+            "Git BBQ works through a local Codex CLI."
+        )
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        import shutil
+
+        shutil.rmtree(self.package / "hooks")
+
+        self.assertEqual(validate(self.package, "x86_64-linux", variant="public"), [])
+        self.assertTrue((self.package / "runtime/git-bbq/git-bbq").is_file())
+        self.assertTrue((self.package / "skills/code-review/SKILL.md").is_file())
+
+    def test_public_variant_rejects_hook_files_and_manifest_references(self):
+        errors = validate(self.package, "x86_64-linux", variant="public")
+        self.assertTrue(any("must not reference lifecycle hooks" in error for error in errors))
+        self.assertTrue(any("must not contain hook files" in error for error in errors))
+
+    def test_public_variant_rejects_hook_reference_in_compatibility_manifest(self):
+        path = self.package / ".codex-plugin/plugin.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        manifest["extensions"]["com.openai"]["hooks"] = "./hooks/hooks.json"
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+        errors = validate(self.package, "x86_64-linux", variant="public")
+        self.assertTrue(any("public manifest contains a hook reference" in error for error in errors))
 
 
 if __name__ == "__main__":

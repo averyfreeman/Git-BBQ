@@ -12,6 +12,11 @@ and implementation discussions.
 | **Portable plugin manifest** | Root `plugin.json`, which declares plugin identity and portable package metadata. |
 | **Codex compatibility manifest** | `.codex-plugin/plugin.json`, which carries Codex-compatible metadata for hosts that use the fallback manifest. |
 | **Generated project context** | Git BBQ's existing `CONTEXT.md` and `CONTEXT-MAP.md` files created for scaffolded repositories. This format is separate from this repository's root glossary. |
+| **Language candidate** | A supported language proposed by read-only repository detection, together with the paths that support it. It is not selected project configuration until the user confirms it or an existing explicit selection applies. |
+| **Language evidence** | A recognized project marker or first-party source file used to propose a language candidate. Evidence is shown so users can assess ambiguous and polyglot repositories. |
+| **Language profile** | Git BBQ's language-specific operating guidance used by the generated agent router, focused skill, and implementation-plan projection. |
+| **Generated projection** | A deterministic artifact derived from the manifest and Matt-native project records. It supports retrieval and validation but is not an independent source of truth. |
+| **Legacy project migration** | An explicit, additive conversion of compatible AI Software Architect project metadata and decisions into Git BBQ's current project format while preserving the original files. |
 
 Do not use “renamed skill” for a packaged upstream skill. Its package directory
 and frontmatter name match the upstream directory name. Do not call the Git

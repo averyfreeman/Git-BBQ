@@ -47,6 +47,33 @@ func TestScaffoldWritesMattNativeOutputs(t *testing.T) {
 	if !strings.Contains(string(agents), "CONTEXT.md") || !strings.Contains(string(agents), "docs/adr") {
 		t.Fatalf("AGENTS.md does not route to Matt documents: %s", agents)
 	}
+	if !strings.Contains(string(agents), "[Go](./.agents/skills/go/SKILL.md)") || !strings.Contains(string(agents), "[Python](./.agents/skills/python/SKILL.md)") {
+		t.Fatalf("AGENTS.md omits language-profile routes: %s", agents)
+	}
+	goSkill, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "go", "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(goSkill), "go test ./...") || !strings.Contains(string(goSkill), "gofmt -w .") {
+		t.Fatalf("Go skill omits profile guidance: %s", goSkill)
+	}
+	context, err := os.ReadFile(filepath.Join(root, ContextFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(context) != renderContext("Example") {
+		t.Fatalf("generated CONTEXT.md contract changed: %s", context)
+	}
+	contextMap, err := os.ReadFile(filepath.Join(root, ContextMapFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contextMap) != renderContextMap() {
+		t.Fatalf("generated CONTEXT-MAP.md contract changed: %s", contextMap)
+	}
+	if _, err := os.Stat(filepath.Join(root, "PLAN.md")); !os.IsNotExist(err) {
+		t.Fatalf("competing PLAN.md was created or returned unexpected error: %v", err)
+	}
 	githabits, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "githabits", "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -108,6 +135,13 @@ func TestProjectGeneratesProjectionsWithoutSecondADRSet(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, relative)); err != nil {
 			t.Fatalf("missing projection %s: %v", relative, err)
 		}
+	}
+	plan, err := os.ReadFile(filepath.Join(root, ImplementationPlanFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plan), "### Go") || !strings.Contains(string(plan), "go test ./...") {
+		t.Fatalf("implementation plan omits selected language guidance: %s", plan)
 	}
 }
 

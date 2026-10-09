@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,6 +156,189 @@ func TestHelpAliasesResolveNestedTopics(t *testing.T) {
 	}
 	if _, err := helpText("missing"); err == nil || !strings.Contains(err.Error(), "git-bbq help") {
 		t.Fatalf("unknown help topic error = %v", err)
+	}
+}
+
+func TestRunInitNonInteractiveReportsLanguageEvidenceAndDoesNotWrite(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_BBQ_CONFIG", filepath.Join(t.TempDir(), "missing-config.yaml"))
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := gitbbq.SnapshotFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = runInit([]string{"--problem", "Build a CLI.", root})
+	if err == nil || !strings.Contains(err.Error(), "go") || !strings.Contains(err.Error(), "main.go") || !strings.Contains(err.Error(), "--language") {
+		t.Fatalf("language selection error = %v", err)
+	}
+	after, err := gitbbq.SnapshotFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(before, "\n") != strings.Join(after, "\n") {
+		t.Fatalf("non-interactive detection wrote files: before=%v after=%v", before, after)
+	}
+}
+
+func TestRunInitUsesSavedUserLanguagesWithoutDetection(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "preferences.yaml")
+	t.Setenv("GIT_BBQ_CONFIG", configPath)
+	if err := gitbbq.SavePreferences(gitbbq.Preferences{Profile: "guided", Languages: []string{"python"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runInit([]string{"--problem", "Build a Python service.", "--json", root}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := gitbbq.ReadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(manifest.Languages, ",") != "python" {
+		t.Fatalf("manifest languages = %#v", manifest.Languages)
+	}
+}
+
+func TestRunInitUsesSavedProjectLanguagesBeforeDetection(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_BBQ_CONFIG", filepath.Join(t.TempDir(), "missing-preferences.yaml"))
+	if _, err := gitbbq.ScaffoldProject(root, gitbbq.ScaffoldOptions{ProjectName: "Example", Problem: "Keep saved language intent.", Languages: []string{"go"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "service.py"), []byte("def run(): pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runInit([]string{"--problem", "Keep the saved profile.", "--here", "--json", root}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := gitbbq.ReadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(manifest.Languages, ",") != "go" {
+		t.Fatalf("saved project languages were replaced by detected candidates: %#v", manifest.Languages)
+	}
+}
+
+func TestRunInitExplicitLanguagesOverrideDetectionAndPreferences(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_BBQ_CONFIG", filepath.Join(t.TempDir(), "preferences.yaml"))
+	if err := gitbbq.SavePreferences(gitbbq.Preferences{Profile: "guided", Languages: []string{"python"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte("def main(): pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runInit([]string{"--problem", "Use the explicit profile.", "--language", "rust", "--here", "--json", root}); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := gitbbq.ReadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(manifest.Languages, ",") != "rust" {
+		t.Fatalf("explicit language selection was not honored: %#v", manifest.Languages)
+	}
+}
+
+func TestRunMigratePreviewsWithoutWritingAndAppliesAfterApproval(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".adr-scaffold.yaml"), []byte("version: 1\nlanguage: go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".ai-architect"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runMigrate([]string{"--json", root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, gitbbq.ManifestFilename)); !os.IsNotExist(err) {
+		t.Fatalf("migration preview wrote the manifest: %v", err)
+	}
+
+	if err := runMigrate([]string{"--approve", "--json", root}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, gitbbq.ManifestFilename)); err != nil {
+		t.Fatalf("approved migration did not write the manifest: %v", err)
+	}
+}
+
+func TestRunMigrateRequiresApprovalForGitHabitsArchive(t *testing.T) {
+	if err := runMigrate([]string{"--archive-legacy-githabits", t.TempDir()}); err == nil || !strings.Contains(err.Error(), "requires --approve") {
+		t.Fatalf("archive approval error = %v", err)
+	}
+}
+
+func TestRunInitInteractiveCancellationWritesNothing(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("GIT_BBQ_CONFIG", filepath.Join(t.TempDir(), "missing-config.yaml"))
+	if err := os.WriteFile(filepath.Join(root, "main.py"), []byte("def main(): pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := gitbbq.SnapshotFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stdin, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalStdin := os.Stdin
+	os.Stdin = stdin
+	t.Cleanup(func() {
+		os.Stdin = originalStdin
+		stdin.Close()
+	})
+	if _, err := writer.WriteString("\n\nn\nn\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	err = runInit([]string{"--interactive", "--here", "--problem", "Build a worker.", root})
+	if err == nil || !strings.Contains(err.Error(), "setup cancelled") {
+		t.Fatalf("interactive cancellation error = %v", err)
+	}
+	after, err := gitbbq.SnapshotFiles(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(before, "\n") != strings.Join(after, "\n") {
+		t.Fatalf("cancelled interactive setup wrote files: before=%v after=%v", before, after)
+	}
+}
+
+func TestInteractiveSetupAllowsEditingDetectedLanguageSet(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("rust,java\n\nn\ny\n"))
+	problem, languages, profile, remember, err := promptSetupWithReader(
+		"Build a compiler.",
+		stringList{"go", "python"},
+		"guided",
+		true,
+		"detected candidates",
+		reader,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problem != "Build a compiler." || profile != "guided" || remember {
+		t.Fatalf("setup values = problem %q, profile %q, remember %v", problem, profile, remember)
+	}
+	if strings.Join(languages, ",") != "rust,java" {
+		t.Fatalf("selected languages = %#v", languages)
 	}
 }
 

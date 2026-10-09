@@ -50,6 +50,8 @@ func main() {
 		err = runAssess(os.Args[2:])
 	case "apply":
 		err = runApply(os.Args[2:])
+	case "migrate":
+		err = runMigrate(os.Args[2:])
 	case "uninstall":
 		err = runUninstall(os.Args[2:])
 	case "adr":
@@ -89,6 +91,7 @@ var helpTopicOrder = []string{
 	"init",
 	"assess",
 	"apply",
+	"migrate",
 	"uninstall",
 	"adr",
 	"adr new",
@@ -109,7 +112,9 @@ var helpTopics = map[string]string{
 	"init": `git-bbq init [path] --problem TEXT --language go[,python] [options]
 
 Create the project contract, AGENTS.md router, ADR context, Git policy, and
-language skills. Required flags are --problem and at least one --language.
+language skills. Required flags are --problem and at least one --language
+unless a saved language selection exists. Interactive setup detects languages,
+shows evidence, and requires confirmation before writing.
 Options: --here, --bootstrap, --profile, --interactive, --force,
 --allow-action, --deny-action, --remember, --format, --json.`,
 	"assess": `git-bbq assess [path] [--format text|json] [--json]
@@ -118,8 +123,14 @@ Inspect the files Git BBQ would create or change without writing anything.`,
 	"apply": `git-bbq apply [path] --approve --problem TEXT --language go[,python] [options]
 
 Apply a reviewed assessment. Requires --approve, --problem, and at least one
---language. Supports --interactive, --force, profile/action overrides, and
+--language unless a saved language selection exists. Supports --interactive,
+language evidence, confirmation, --force, profile/action overrides, and
 --format/--json output.`,
+	"migrate": `git-bbq migrate [--approve] [--archive-legacy-githabits] [path]
+
+Preview a read-only AI Software Architect migration assessment. Use --approve
+to apply the additive migration. Replacing an incompatible legacy .githabits.yaml
+also requires --archive-legacy-githabits, which preserves the original file.`,
 	"uninstall": `git-bbq uninstall [path] [--approve] [--format text|json] [--json]
 
 Without --approve, show the read-only removal assessment. With --approve,
@@ -136,7 +147,8 @@ Create a durable architecture decision record. Options include --status,
 Read and emit the generated ADR retrieval index as JSON.`,
 	"validate": `git-bbq validate [path] [--format text|json] [--json]
 
-Validate the project contract, required files, ADR structure, and hook policy.`,
+Validate the project contract, ADR structure, current projections, hook policy,
+and bounded secret checks for architecture artifacts.`,
 	"project": `git-bbq project [path] [--json]
 
 Recreate the architecture contract, implementation plan, and ADR index
@@ -298,13 +310,14 @@ func runInit(args []string) error {
 	if *profile == "" {
 		*profile = projectProfile(root, preferences.Profile)
 	}
-	if len(languages) == 0 {
-		languages = projectLanguages(root, preferences.Languages)
+	languages, editLanguages, proposalSource, err := resolveLanguageSelection(root, languages, preferences.Languages, interactive)
+	if err != nil {
+		return err
 	}
 	if interactive {
 		var err error
 		var save bool
-		*problem, languages, *profile, save, err = promptSetup(*problem, languages, *profile)
+		*problem, languages, *profile, save, err = promptSetup(*problem, languages, *profile, editLanguages, proposalSource)
 		if err != nil {
 			return err
 		}
@@ -321,8 +334,8 @@ func runInit(args []string) error {
 	if strings.TrimSpace(*problem) == "" {
 		return errors.New("--problem is required; use --interactive to answer it")
 	}
-	if len(languages) == 0 {
-		return errors.New("at least one --language is required; language detection is intentionally not implicit")
+	if err := gitbbq.ValidateLanguageSelection(languages); err != nil {
+		return err
 	}
 	overrides, err := parseActionOverrides(allowActions, denyActions)
 	if err != nil {
@@ -400,12 +413,16 @@ func runApply(args []string) error {
 	if err != nil {
 		return err
 	}
-	if len(languages) == 0 {
-		languages = projectLanguages(root, preferences.Languages)
+	if *profile == "" {
+		*profile = projectProfile(root, preferences.Profile)
+	}
+	languages, editLanguages, proposalSource, err := resolveLanguageSelection(root, languages, preferences.Languages, interactive)
+	if err != nil {
+		return err
 	}
 	if interactive {
 		var save bool
-		*problem, languages, *profile, save, err = promptSetup(*problem, languages, *profile)
+		*problem, languages, *profile, save, err = promptSetup(*problem, languages, *profile, editLanguages, proposalSource)
 		if err != nil {
 			return err
 		}
@@ -419,8 +436,11 @@ func runApply(args []string) error {
 			*problem = manifest.Problem
 		}
 	}
-	if strings.TrimSpace(*problem) == "" || len(languages) == 0 {
-		return errors.New("apply requires --problem and at least one --language")
+	if strings.TrimSpace(*problem) == "" {
+		return errors.New("apply requires --problem")
+	}
+	if err := gitbbq.ValidateLanguageSelection(languages); err != nil {
+		return err
 	}
 	overrides, err := parseActionOverrides(allowActions, denyActions)
 	if err != nil {
@@ -439,6 +459,36 @@ func runApply(args []string) error {
 		}
 	}
 	return output(result, selectedFormat(*format, *jsonOutput))
+}
+
+func runMigrate(args []string) error {
+	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
+	format := fs.String("format", "text", "output format (text|json)")
+	jsonOutput := fs.Bool("json", false, "emit JSON")
+	approve := fs.Bool("approve", false, "approve and apply the reviewed migration assessment")
+	archiveLegacyGitHabits := fs.Bool("archive-legacy-githabits", false, "preserve and replace an incompatible legacy .githabits.yaml")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *archiveLegacyGitHabits && !*approve {
+		return errors.New("--archive-legacy-githabits requires --approve")
+	}
+	root := "."
+	if fs.NArg() > 0 {
+		root = fs.Arg(0)
+	}
+	if *approve {
+		result, err := gitbbq.Migrate(root, *archiveLegacyGitHabits)
+		if err != nil {
+			return err
+		}
+		return output(result, selectedFormat(*format, *jsonOutput))
+	}
+	assessment, err := gitbbq.AssessMigration(root)
+	if err != nil {
+		return err
+	}
+	return output(assessment, selectedFormat(*format, *jsonOutput))
 }
 
 func runUninstall(args []string) error {
@@ -795,26 +845,42 @@ func runDoctor(args []string) error {
 	return nil
 }
 
-func promptSetup(problem string, languages stringList, profile string) (string, stringList, string, bool, error) {
+func promptSetup(problem string, languages stringList, profile string, editLanguages bool, proposalSource string) (string, stringList, string, bool, error) {
+	return promptSetupWithReader(problem, languages, profile, editLanguages, proposalSource, bufio.NewReader(os.Stdin))
+}
+
+func promptSetupWithReader(problem string, languages stringList, profile string, editLanguages bool, proposalSource string, reader *bufio.Reader) (string, stringList, string, bool, error) {
 	if strings.TrimSpace(problem) == "" {
-		answer, err := prompt("What problem are we solving? ")
+		answer, err := promptWithReader(reader, "What problem are we solving? ")
 		if err != nil {
 			return "", nil, "", false, err
 		}
 		problem = answer
 	}
-	if len(languages) == 0 {
-		answer, err := prompt("Which languages should be scaffolded (comma-separated)? ")
+	if editLanguages {
+		label := "Which languages should be scaffolded (comma-separated)? "
+		if len(languages) > 0 {
+			label = fmt.Sprintf("Languages [%s] (Enter keeps this set; enter a comma-separated set to edit): ", strings.Join(languages, ", "))
+		}
+		answer, err := promptWithReader(reader, label)
 		if err != nil {
 			return "", nil, "", false, err
 		}
-		_ = languages.Set(answer)
+		if strings.TrimSpace(answer) != "" {
+			languages = nil
+			if err := languages.Set(answer); err != nil {
+				return "", nil, "", false, err
+			}
+		}
+	}
+	if err := gitbbq.ValidateLanguageSelection(languages); err != nil {
+		return "", nil, "", false, err
 	}
 	profilePrompt := profile
 	if strings.TrimSpace(profilePrompt) == "" {
 		profilePrompt = "guided"
 	}
-	answer, err := prompt(fmt.Sprintf("Git profile (manual/guided/autonomous) [%s]: ", profilePrompt))
+	answer, err := promptWithReader(reader, fmt.Sprintf("Git profile (manual/guided/autonomous) [%s]: ", profilePrompt))
 	if err != nil {
 		return "", nil, "", false, err
 	}
@@ -823,22 +889,119 @@ func promptSetup(problem string, languages stringList, profile string) (string, 
 	} else if profile == "" {
 		profile = profilePrompt
 	}
-	rememberAnswer, err := prompt("Remember this profile and language selection globally? [y/N]: ")
+	rememberAnswer, err := promptWithReader(reader, "Remember this profile and language selection globally? [y/N]: ")
 	if err != nil {
 		return "", nil, "", false, err
 	}
 	remember := strings.EqualFold(strings.TrimSpace(rememberAnswer), "y") || strings.EqualFold(strings.TrimSpace(rememberAnswer), "yes")
+	fmt.Printf("\nProposed setup\n  Problem: %s\n  Languages: %s\n  Git profile: %s\n", problem, strings.Join(languages, ", "), profile)
+	if proposalSource != "" {
+		fmt.Printf("  Language selection: %s\n", proposalSource)
+	}
+	confirmAnswer, err := promptWithReader(reader, "Write the Git BBQ files with this setup? [y/N]: ")
+	if err != nil {
+		return "", nil, "", false, err
+	}
+	if !strings.EqualFold(strings.TrimSpace(confirmAnswer), "y") && !strings.EqualFold(strings.TrimSpace(confirmAnswer), "yes") {
+		return "", nil, "", false, errors.New("setup cancelled; no project files were written")
+	}
 	return problem, languages, profile, remember, nil
 }
 
 func prompt(label string) (string, error) {
+	return promptWithReader(bufio.NewReader(os.Stdin), label)
+}
+
+func promptWithReader(reader *bufio.Reader, label string) (string, error) {
 	fmt.Print(label)
-	reader := bufio.NewReader(os.Stdin)
 	answer, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
 	return strings.TrimSpace(answer), nil
+}
+
+func detectForSetup(root string) (gitbbq.LanguageDetection, error) {
+	if _, err := os.Stat(root); os.IsNotExist(err) {
+		return gitbbq.LanguageDetection{Root: root, Candidates: []gitbbq.LanguageCandidate{}}, nil
+	} else if err != nil {
+		return gitbbq.LanguageDetection{}, err
+	}
+	return gitbbq.DetectLanguages(root)
+}
+
+func resolveLanguageSelection(root string, requested, preferenceLanguages stringList, interactive bool) (stringList, bool, string, error) {
+	if len(requested) > 0 {
+		return append(stringList(nil), requested...), false, "explicit --language selection", nil
+	}
+
+	selected := projectLanguages(root, preferenceLanguages)
+	if len(selected) > 0 && !interactive {
+		return selected, false, savedLanguageSource(root, preferenceLanguages), nil
+	}
+
+	report, err := detectForSetup(root)
+	if err != nil {
+		return nil, false, "", err
+	}
+	if !interactive {
+		return nil, false, "", missingLanguageSelectionError(report)
+	}
+
+	source := savedLanguageSource(root, preferenceLanguages)
+	if len(selected) == 0 {
+		selected = report.CandidateLanguages()
+		source = "detected candidates"
+	}
+	fmt.Print(formatLanguageDetection(report, selected, source))
+	return selected, true, source, nil
+}
+
+func savedLanguageSource(root string, preferenceLanguages []string) string {
+	if manifest, err := gitbbq.ReadManifest(root); err == nil && len(manifest.Languages) > 0 {
+		return "saved project manifest"
+	}
+	if len(preferenceLanguages) > 0 {
+		return "saved user preference"
+	}
+	return "saved language selection"
+}
+
+func formatLanguageDetection(report gitbbq.LanguageDetection, selected []string, source string) string {
+	var builder strings.Builder
+	builder.WriteString("Detected supported languages and evidence:\n")
+	if len(report.Candidates) == 0 {
+		builder.WriteString("  (none detected)\n")
+	}
+	for _, candidate := range report.Candidates {
+		builder.WriteString("  ")
+		builder.WriteString(candidate.Language)
+		builder.WriteString("\n")
+		for _, evidence := range candidate.Evidence {
+			builder.WriteString("    ")
+			builder.WriteString(evidence.Kind)
+			builder.WriteString(": ")
+			builder.WriteString(evidence.Path)
+			builder.WriteString("\n")
+		}
+		if candidate.EvidenceOmitted > 0 {
+			builder.WriteString(fmt.Sprintf("    ... %d more evidence path(s) omitted\n", candidate.EvidenceOmitted))
+		}
+	}
+	if report.Truncated {
+		builder.WriteString("  Scan stopped at the configured file limit; evidence may be incomplete.\n")
+	}
+	if len(selected) > 0 {
+		builder.WriteString(fmt.Sprintf("Proposal: %s (%s)\n", strings.Join(selected, ", "), source))
+	}
+	return builder.String()
+}
+
+func missingLanguageSelectionError(report gitbbq.LanguageDetection) error {
+	if len(report.Candidates) == 0 {
+		return errors.New("language selection required: no supported language candidates were detected; pass --language explicitly or run with --interactive")
+	}
+	return fmt.Errorf("language selection required; detected candidates and evidence:\n%sPass --language explicitly or run with --interactive to review and confirm", formatLanguageDetection(report, nil, ""))
 }
 
 func output(value any, format string) error {

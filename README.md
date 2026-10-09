@@ -133,17 +133,18 @@ A Git BBQ project uses:
 
 The detailed contract is in [docs/GIT_BBQ.md](docs/GIT_BBQ.md).
 
-## Codex plugin
+## Plugin packages
 
-Build the standalone Codex package, including its portable manifest,
-compatibility manifest, launchers, and short-lived Go runtimes:
+Build the local Codex desktop package, including its portable manifest,
+compatibility manifest, five lifecycle hooks, launchers, and Go runtimes:
 
 ```sh
 python3 scripts/build_git_bbq_plugin.py \
   --output plugins/git-bbq \
+  --variant local \
   --target all \
   --force
-python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq
+python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --variant local --target all
 ```
 
 The package contains exactly five lifecycle hooks and embeds the `git-bbq`
@@ -155,6 +156,11 @@ support files remain upstream content. The build maps the non-standard
 `disable-model-invocation` field to its equivalent Codex policy and carries any
 non-standard `argument-hint` into namespaced standard metadata. The package
 records each upstream path and commit in `skills/matt-skills-manifest.json`.
+
+Build the hook-free, public-oriented variant for submission preflight with
+`--variant public`. It includes the curated skills and local CLI binaries, but
+does not give ChatGPT web installs access to a user's local repository or make
+the CLI executable there. See [the submission handoff](docs/PLUGIN_SUBMISSION.md).
 
 To make it available in Codex CLI and ChatGPT desktop:
 
