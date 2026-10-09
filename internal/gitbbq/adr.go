@@ -14,6 +14,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ADRInput contains the required content and optional status for a new ADR.
+// An empty Status defaults to "proposed".
 type ADRInput struct {
 	Title    string
 	Context  string
@@ -22,6 +24,8 @@ type ADRInput struct {
 	Status   string
 }
 
+// ADRRecord is a parsed architecture decision record. Path is the path used
+// to read the record, except in generated indexes where it is repository-relative.
 type ADRRecord struct {
 	Number   int    `json:"number"`
 	Title    string `json:"title"`
@@ -31,6 +35,7 @@ type ADRRecord struct {
 	Body     string `json:"body"`
 }
 
+// ADRIndex is the generated, timestamped index of valid ADR files.
 type ADRIndex struct {
 	SchemaVersion string      `json:"schema_version"`
 	GeneratedAt   time.Time   `json:"generated_at"`
@@ -41,6 +46,9 @@ type ADRIndex struct {
 var adrFilenamePattern = regexp.MustCompile(`^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
 var supersededStatusPattern = regexp.MustCompile(`^superseded by ADR-\d{4}$`)
 
+// CreateADR validates and writes a uniquely numbered ADR under docs/adr.
+// It rejects incomplete content, invalid status, duplicate titles, and
+// conflicting generated paths.
 func CreateADR(root string, input ADRInput) (ADRRecord, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Context = strings.TrimSpace(input.Context)
@@ -94,6 +102,8 @@ func CreateADR(root string, input ADRInput) (ADRRecord, error) {
 	return ParseADR(path)
 }
 
+// ParseADR reads and validates one ADR file, including its filename, title,
+// status frontmatter, and required rationale sections.
 func ParseADR(path string) (ADRRecord, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -123,6 +133,9 @@ func ParseADR(path string) (ADRRecord, error) {
 	return record, nil
 }
 
+// IndexADRs validates ADRs in root/docs/adr and writes the generated JSON
+// index when that directory exists. It returns the index even when there are
+// no ADR files.
 func IndexADRs(root string) (ADRIndex, error) {
 	index, created, err := indexADRs(root, true)
 	if err != nil {

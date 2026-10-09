@@ -8,6 +8,9 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
+// GenerateSchemas returns the JSON schemas for Git BBQ's manifest, Git habits,
+// Git plan and execution, and architecture contract types. Map keys are schema
+// filenames and values are newline-terminated JSON documents.
 func GenerateSchemas() (map[string][]byte, error) {
 	values := []struct {
 		name  string
@@ -48,6 +51,8 @@ func GenerateSchemas() (map[string][]byte, error) {
 	return result, nil
 }
 
+// WriteSchemas generates the supported JSON schemas under root/schemas/gitbbq
+// and returns their project-relative paths in sorted order.
 func WriteSchemas(root string) ([]string, error) {
 	schemas, err := GenerateSchemas()
 	if err != nil {

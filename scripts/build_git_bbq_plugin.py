@@ -18,7 +18,7 @@ import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VERSION = "0.4.0"
+DEFAULT_VERSION = "0.4.1"
 SKILLS_REPOSITORY = "https://github.com/mattpocock/skills.git"
 CURATION_FILENAME = "git-bbq-curation.json"
 SELECTION_MANIFEST_FILENAME = "skills/matt-skills-manifest.json"

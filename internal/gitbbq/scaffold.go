@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// ScaffoldProject writes Git BBQ configuration and agent guidance under root.
+// Existing non-empty roots require AllowHere; Force permits replacement of
+// existing generated regular files. Symlink and non-regular targets are
+// rejected.
 func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, error) {
 	root = filepath.Clean(root)
 	if root == "." {
@@ -135,6 +139,8 @@ func ScaffoldProject(root string, options ScaffoldOptions) (ScaffoldResult, erro
 	return result, nil
 }
 
+// Assess returns a read-only inventory of existing files, proposed scaffold
+// paths, and path conflicts under root.
 func Assess(root string) (Assessment, error) {
 	root = filepath.Clean(root)
 	if info, err := os.Stat(root); err != nil {
@@ -158,6 +164,9 @@ func Assess(root string) (Assessment, error) {
 	return Assessment{Mode: "assessment", Root: root, Existing: existing, Proposed: projectPaths(root), Conflicts: conflicts, ReadOnly: true}, nil
 }
 
+// Project validates the canonical project inputs and writes their architecture
+// contract and implementation plan projections. It also writes the ADR index
+// when an ADR directory exists.
 func Project(root string) (Projection, error) {
 	projection, _, err := projectWithOptions(root, true)
 	return projection, err
@@ -224,6 +233,8 @@ func buildArchitectureContract(manifest Manifest, index ADRIndex) ArchitectureCo
 	return contract
 }
 
+// SnapshotFiles lists non-directory entries below root in sorted
+// project-relative form, excluding the .git and .gitbbq directories.
 func SnapshotFiles(root string) ([]string, error) {
 	files := make([]string, 0)
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {

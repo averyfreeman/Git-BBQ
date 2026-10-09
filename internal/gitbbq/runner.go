@@ -14,6 +14,9 @@ type OSGitRunner struct {
 	Timeout time.Duration
 }
 
+// Run executes a Git command in workspace without a shell. It returns the
+// process exit code as a result; launch and timeout failures are returned as
+// errors.
 func (runner OSGitRunner) Run(workspace string, command []string) (GitRunResult, error) {
 	if len(command) == 0 || command[0] != "git" {
 		return GitRunResult{}, fmt.Errorf("Git runner accepts only git commands")
@@ -26,6 +29,9 @@ type OSGHRunner struct {
 	Timeout time.Duration
 }
 
+// Run executes a GitHub CLI command in workspace without a shell. It returns
+// the process exit code as a result; launch and timeout failures are returned
+// as errors.
 func (runner OSGHRunner) Run(workspace string, command []string) (GitRunResult, error) {
 	if len(command) == 0 || command[0] != "gh" {
 		return GitRunResult{}, fmt.Errorf("gh runner accepts only gh commands")

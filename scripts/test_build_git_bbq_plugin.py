@@ -186,7 +186,7 @@ class PackageValidationTests(unittest.TestCase):
         manifest = {
             "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
             "name": "git-bbq",
-            "version": "0.4.0",
+            "version": "0.4.1",
             "description": "Git BBQ",
             "author": {"name": "Git BBQ"},
             "extensions": {

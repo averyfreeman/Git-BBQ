@@ -342,18 +342,55 @@ func TestInteractiveSetupAllowsEditingDetectedLanguageSet(t *testing.T) {
 	}
 }
 
-func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
-	root := filepath.Join(t.TempDir(), "Secure-Web-Printer")
-	problem := "Build Secure-Web-Printer, a Go HTTPS server with an embedded Let's Encrypt ACME requester, HTMX and Markdown templates, and release binaries for aarch64-darwin, gnu-linux-x86_64, gnu-linux-aarch64, Windows x86_64, and Windows aarch64."
-	adrTitle := "Set Secure-Web-Printer release targets"
-	adrContext := "Secure-Web-Printer needs one release matrix for its Go HTTPS server across macOS arm64, Linux x86_64 and arm64, and Windows x86_64 and arm64."
-	adrDecision := "Use darwin/arm64 (aarch64-darwin), linux/amd64 (gnu-linux-x86_64), linux/arm64 (gnu-linux-aarch64), windows/amd64 (Windows x86_64), and windows/arm64 (Windows aarch64)."
-	adrWhy := "The names make the release promise readable while Go's GOOS and GOARCH pairs keep builds reproducible."
+func TestNextJSEcommerceREADMEExampleCreatesDocumentedProject(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "storefront")
+	problem := "Create a modern Next.js e-commerce site, complete with product reviews, testimonials, a product catalog, a shopping cart, and Stripe payments. Include a chatbot popup window for automated customer service, and a modal offering 15% off in exchange for an email address."
+	adrTitle := "Use Stripe for checkout payments"
+	adrContext := "The store needs online payments, and the browser must not own payment credentials or decide whether an order is paid."
+	adrDecision := "Use Stripe for checkout. Keep Stripe credentials on the server and mark orders paid only after verifying Stripe's payment event."
+	adrWhy := "The server boundary protects payment credentials, and a verified payment event gives order fulfillment a reliable signal."
+
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readmeText := string(readme)
+	quickStart := strings.SplitN(readmeText, "## How Git BBQ fits the workflow", 2)[0]
+	for _, fragment := range []string{
+		`--name storefront`,
+		`--problem "` + problem + `"`,
+		`--language typescript`,
+		`--title "` + adrTitle + `"`,
+		`--context "` + adrContext + `"`,
+		`--decision "` + adrDecision + `"`,
+		`--why "` + adrWhy + `"`,
+		"./git-bbq project ./storefront",
+		"./git-bbq validate ./storefront",
+	} {
+		if !strings.Contains(quickStart, fragment) {
+			t.Fatalf("README quick start is missing fixture command content %q", fragment)
+		}
+	}
+	treeStart := strings.Index(readmeText, "After these commands, the repository includes:")
+	if treeStart < 0 {
+		t.Fatal("README is missing the generated project tree")
+	}
+	treeSection := readmeText[treeStart:]
+	treeFenceStart := strings.Index(treeSection, "```text\n")
+	if treeFenceStart < 0 {
+		t.Fatal("README generated project tree is missing its text code fence")
+	}
+	treeSection = treeSection[treeFenceStart+len("```text\n"):]
+	treeFenceEnd := strings.Index(treeSection, "\n```")
+	if treeFenceEnd < 0 {
+		t.Fatal("README generated project tree has an unterminated code fence")
+	}
+	projectTree := treeSection[:treeFenceEnd]
 
 	if err := runInit([]string{
-		"--name", "Secure-Web-Printer",
+		"--name", "storefront",
 		"--problem", problem,
-		"--language", "go",
+		"--language", "typescript",
 		root,
 	}); err != nil {
 		t.Fatalf("init example: %v", err)
@@ -378,14 +415,14 @@ func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if manifest.ProjectName != "Secure-Web-Printer" || manifest.Problem != problem {
+	if manifest.ProjectName != "storefront" || manifest.Problem != problem {
 		t.Fatalf("manifest identity = %#v", manifest)
 	}
-	if len(manifest.Languages) != 1 || manifest.Languages[0] != "go" {
+	if len(manifest.Languages) != 1 || manifest.Languages[0] != "typescript" {
 		t.Fatalf("manifest languages = %#v", manifest.Languages)
 	}
 
-	adrPath := filepath.Join(root, gitbbq.ADRDirectory, "0001-set-secure-web-printer-release-targets.md")
+	adrPath := filepath.Join(root, gitbbq.ADRDirectory, "0001-use-stripe-for-checkout-payments.md")
 	adr, err := gitbbq.ParseADR(adrPath)
 	if err != nil {
 		t.Fatal(err)
@@ -397,7 +434,7 @@ func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
 	for _, relative := range []string{
 		".agents/mattpocock/DEPENDENCY.yaml",
 		".agents/skills/githabits/SKILL.md",
-		".agents/skills/go/SKILL.md",
+		".agents/skills/typescript/SKILL.md",
 		".gitbbq-manifest.yaml",
 		".gitbbq/.gitignore",
 		".gitbbq/hooks.json",
@@ -408,10 +445,13 @@ func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
 		"CONTEXT-MAP.md",
 		"CONTEXT.md",
 		"architecture-contract.yaml",
-		"docs/adr/0001-set-secure-web-printer-release-targets.md",
+		"docs/adr/0001-use-stripe-for-checkout-payments.md",
 		"docs/adr/index.json",
 		"implementation-plan.md",
 	} {
+		if !strings.Contains(projectTree, filepath.Base(relative)) {
+			t.Errorf("README project tree omits generated file %s", relative)
+		}
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err != nil {
 			t.Fatalf("missing documented generated file %s: %v", relative, err)
 		}
@@ -421,28 +461,28 @@ func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(contract), "Secure-Web-Printer") || !strings.Contains(string(contract), "gnu-linux-aarch64") {
+	if !strings.Contains(string(contract), "storefront") || !strings.Contains(string(contract), "Stripe payments") {
 		t.Fatalf("architecture contract omits example scope: %s", contract)
 	}
 	plan, err := os.ReadFile(filepath.Join(root, gitbbq.ImplementationPlanFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(plan), adrTitle) || !strings.Contains(string(plan), "go") {
+	if !strings.Contains(string(plan), adrTitle) || !strings.Contains(string(plan), "typescript") {
 		t.Fatalf("implementation projection omits example decision: %s", plan)
 	}
 	index, err := os.ReadFile(filepath.Join(root, gitbbq.ADRIndexFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(index), adrTitle) || !strings.Contains(string(index), "\"decision_count\": 1") {
+	if !strings.Contains(string(index), adrTitle) || !strings.Contains(string(index), `"decision_count": 1`) {
 		t.Fatalf("ADR index omits example decision: %s", index)
 	}
 	ownership, err := os.ReadFile(filepath.Join(root, gitbbq.OwnershipFilename))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(ownership), "docs/adr/0001-set-secure-web-printer-release-targets.md") {
+	if !strings.Contains(string(ownership), "docs/adr/0001-use-stripe-for-checkout-payments.md") {
 		t.Fatalf("ownership ledger omits example ADR: %s", ownership)
 	}
 	if err := gitbbq.ValidateProject(root); err != nil {

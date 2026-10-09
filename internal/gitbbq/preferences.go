@@ -6,12 +6,16 @@ import (
 	"path/filepath"
 )
 
+// Preferences contains the user's default Git policy profile and optional
+// language selection used by CLI setup.
 type Preferences struct {
 	Version   int      `yaml:"version" json:"version"`
 	Profile   string   `yaml:"profile" json:"profile"`
 	Languages []string `yaml:"languages,omitempty" json:"languages,omitempty"`
 }
 
+// PreferencesPath returns the user configuration path, honoring GIT_BBQ_CONFIG
+// when it is set.
 func PreferencesPath() (string, error) {
 	if override := os.Getenv("GIT_BBQ_CONFIG"); override != "" {
 		return filepath.Clean(override), nil
@@ -23,6 +27,8 @@ func PreferencesPath() (string, error) {
 	return filepath.Join(directory, "git-bbq", "config.yaml"), nil
 }
 
+// LoadPreferences reads and validates user preferences. A missing file returns
+// zero-value preferences without an error.
 func LoadPreferences() (Preferences, error) {
 	path, err := PreferencesPath()
 	if err != nil {
@@ -47,6 +53,8 @@ func LoadPreferences() (Preferences, error) {
 	return preferences, nil
 }
 
+// SavePreferences validates preferences and replaces the user configuration
+// through a temporary file. A supported policy profile is required.
 func SavePreferences(preferences Preferences) error {
 	if preferences.Version == 0 {
 		preferences.Version = 1

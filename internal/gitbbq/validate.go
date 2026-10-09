@@ -8,6 +8,10 @@ import (
 	"path/filepath"
 )
 
+// ValidateProject checks required project files, configuration, lifecycle
+// hooks, generated architecture projections, ownership metadata, and bounded
+// secret scanning for architecture artifacts. It returns the first validation
+// or filesystem error encountered.
 func ValidateProject(root string) error {
 	return validateProject(root, true)
 }

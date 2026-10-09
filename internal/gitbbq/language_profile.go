@@ -1,5 +1,7 @@
 package gitbbq
 
+// LanguageProfile provides suggested build, test, formatting, and documentation
+// commands or practices for one supported language.
 type LanguageProfile struct {
 	Language      string
 	DisplayName   string
@@ -40,11 +42,15 @@ var languageProfiles = map[string]LanguageProfile{
 	},
 }
 
+// ProfileForLanguage returns the profile for a supported language identifier.
+// Language aliases and casing are normalized before lookup.
 func ProfileForLanguage(language string) (LanguageProfile, bool) {
 	profile, ok := languageProfiles[normalizeLanguage(language)]
 	return profile, ok
 }
 
+// LanguageProfileGuidance returns known profiles for languages in normalized
+// order. Unsupported identifiers are omitted.
 func LanguageProfileGuidance(languages []string) []LanguageProfile {
 	profiles := make([]LanguageProfile, 0, len(languages))
 	for _, language := range sortedLanguages(languages) {

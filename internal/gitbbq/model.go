@@ -8,40 +8,63 @@ import (
 )
 
 const (
-	ToolName                   = "git-bbq"
-	ToolVersion                = "0.4.0"
-	SchemaVersion              = "1.0.0"
-	ManifestFilename           = ".gitbbq-manifest.yaml"
-	GitHabitsFilename          = ".githabits.yaml"
-	ContextFilename            = "CONTEXT.md"
-	ContextMapFilename         = "CONTEXT-MAP.md"
-	ADRDirectory               = "docs/adr"
-	ADRIndexFilename           = "docs/adr/index.json"
-	ContractFilename           = "architecture-contract.yaml"
+	// ToolName is the executable name used by Git BBQ.
+	ToolName = "git-bbq"
+	// ToolVersion is the current Git BBQ CLI version.
+	ToolVersion = "0.4.1"
+	// SchemaVersion is the version shared by Git BBQ project contracts.
+	SchemaVersion = "1.0.0"
+	// ManifestFilename is the project-relative path of the Git BBQ manifest.
+	ManifestFilename = ".gitbbq-manifest.yaml"
+	// GitHabitsFilename is the project-relative path of the Git policy.
+	GitHabitsFilename = ".githabits.yaml"
+	// ContextFilename is the path of the project vocabulary document.
+	ContextFilename = "CONTEXT.md"
+	// ContextMapFilename is the path of the project context routing document.
+	ContextMapFilename = "CONTEXT-MAP.md"
+	// ADRDirectory contains the project's canonical architecture decisions.
+	ADRDirectory = "docs/adr"
+	// ADRIndexFilename is the generated retrieval index for architecture decisions.
+	ADRIndexFilename = "docs/adr/index.json"
+	// ContractFilename is the generated architecture contract projection.
+	ContractFilename = "architecture-contract.yaml"
+	// ImplementationPlanFilename is the generated implementation plan projection.
 	ImplementationPlanFilename = "implementation-plan.md"
-	HookConfigPath             = ".gitbbq/hooks.json"
-	SessionPath                = ".gitbbq/session.json"
-	SessionIgnorePath          = ".gitbbq/.gitignore"
-	OwnershipFilename          = ".gitbbq/ownership.json"
+	// HookConfigPath is the path of the generated lifecycle hook configuration.
+	HookConfigPath = ".gitbbq/hooks.json"
+	// SessionPath is the path of Git BBQ's per-project operational session state.
+	SessionPath = ".gitbbq/session.json"
+	// SessionIgnorePath is the path of the ignore rule for per-project session state.
+	SessionIgnorePath = ".gitbbq/.gitignore"
+	// OwnershipFilename records which generated files Git BBQ owns.
+	OwnershipFilename = ".gitbbq/ownership.json"
+	// MattDependencyMetadataPath records the upstream skills dependency pin.
 	MattDependencyMetadataPath = ".agents/mattpocock/DEPENDENCY.yaml"
-	MattDependencyPath         = ".agents/mattpocock"
-	MattRepository             = "https://github.com/mattpocock/skills.git"
-	MattCommit                 = "b0618bc436ad893b3c5e84e55fba86586d34a404"
+	// MattDependencyPath is the generated project's dependency checkout path.
+	MattDependencyPath = ".agents/mattpocock"
+	// MattRepository is the upstream Matt Pocock skills Git repository.
+	MattRepository = "https://github.com/mattpocock/skills.git"
+	// MattCommit is the upstream skills revision used by new project manifests.
+	MattCommit = "b0618bc436ad893b3c5e84e55fba86586d34a404"
 )
 
+// SupportedLanguages lists the canonical profile identifiers accepted by Git BBQ.
 var SupportedLanguages = []string{"go", "python", "typescript", "javascript", "rust", "java", "csharp"}
 
+// MattDependency identifies the upstream skill repository, revision, and project path.
 type MattDependency struct {
 	Repository string `yaml:"repository" json:"repository"`
 	Commit     string `yaml:"commit" json:"commit"`
 	Path       string `yaml:"path" json:"path"`
 }
 
+// HookSettings records whether lifecycle hooks are enabled and which events are required.
 type HookSettings struct {
 	Enabled  bool     `yaml:"enabled" json:"enabled"`
 	Required []string `yaml:"required" json:"required"`
 }
 
+// Manifest is the canonical Git BBQ project configuration.
 type Manifest struct {
 	SchemaVersion string         `yaml:"schema_version" json:"schema_version"`
 	Version       int            `yaml:"version" json:"version"`
@@ -52,6 +75,7 @@ type Manifest struct {
 	Hooks         HookSettings   `yaml:"hooks" json:"hooks"`
 }
 
+// RemoteConfig records the configured Git remote provider and its lifecycle state.
 type RemoteConfig struct {
 	Provider   string `yaml:"provider" json:"provider"`
 	Owner      string `yaml:"owner,omitempty" json:"owner,omitempty"`
@@ -62,6 +86,7 @@ type RemoteConfig struct {
 	URL        string `yaml:"url,omitempty" json:"url,omitempty"`
 }
 
+// GitActions contains the per-action permissions used by GitHabits.
 type GitActions struct {
 	Init   bool `yaml:"init" json:"init"`
 	Branch bool `yaml:"branch" json:"branch"`
@@ -72,6 +97,7 @@ type GitActions struct {
 	Push   bool `yaml:"push" json:"push"`
 }
 
+// GitHabits is the project's explicit policy for planning and executing Git actions.
 type GitHabits struct {
 	SchemaVersion   string       `yaml:"schema_version" json:"schema_version"`
 	Version         int          `yaml:"version" json:"version"`
@@ -85,18 +111,28 @@ type GitHabits struct {
 	Remote          RemoteConfig `yaml:"remote" json:"remote"`
 }
 
+// GitAction names a Git operation supported by the policy planner.
 type GitAction string
 
 const (
-	GitActionInit   GitAction = "init"
+	// GitActionInit names Git repository initialization.
+	GitActionInit GitAction = "init"
+	// GitActionBranch names branch creation.
 	GitActionBranch GitAction = "branch"
-	GitActionStage  GitAction = "stage"
+	// GitActionStage names staging reviewed paths.
+	GitActionStage GitAction = "stage"
+	// GitActionCommit names commit creation.
 	GitActionCommit GitAction = "commit"
-	GitActionTag    GitAction = "tag"
+	// GitActionTag names release tag creation.
+	GitActionTag GitAction = "tag"
+	// GitActionRemote names remote configuration.
 	GitActionRemote GitAction = "remote"
-	GitActionPush   GitAction = "push"
+	// GitActionPush names pushing commits to a configured remote.
+	GitActionPush GitAction = "push"
 )
 
+// DefaultManifest returns a new project manifest with the supplied name and
+// the current upstream dependency and required hook defaults.
 func DefaultManifest(projectName string) Manifest {
 	return Manifest{
 		SchemaVersion: SchemaVersion,
@@ -112,6 +148,7 @@ func DefaultManifest(projectName string) Manifest {
 	}
 }
 
+// DefaultGitHabits returns the guided policy defaults for a new project.
 func DefaultGitHabits() GitHabits {
 	return GitHabits{
 		SchemaVersion:   SchemaVersion,
@@ -126,6 +163,8 @@ func DefaultGitHabits() GitHabits {
 	}
 }
 
+// GitHabitsForProfile returns the policy defaults for manual, guided, or
+// autonomous mode. It returns an error for an unsupported profile.
 func GitHabitsForProfile(profile string) (GitHabits, error) {
 	config := DefaultGitHabits()
 	config.Profile = strings.ToLower(strings.TrimSpace(profile))
@@ -145,6 +184,7 @@ func GitHabitsForProfile(profile string) (GitHabits, error) {
 	return config, nil
 }
 
+// SetAction changes one action permission and rejects unknown actions.
 func (config *GitHabits) SetAction(action GitAction, allowed bool) error {
 	switch action {
 	case GitActionInit:
@@ -167,6 +207,8 @@ func (config *GitHabits) SetAction(action GitAction, allowed bool) error {
 	return nil
 }
 
+// Allows reports whether the policy permits an action. Push also requires a
+// configured remote.
 func (config GitHabits) Allows(action GitAction) bool {
 	switch action {
 	case GitActionInit:
@@ -188,6 +230,8 @@ func (config GitHabits) Allows(action GitAction) bool {
 	}
 }
 
+// ValidateManifest checks required project metadata, supported languages,
+// dependency fields, and the required lifecycle hook policy.
 func ValidateManifest(manifest Manifest) error {
 	if manifest.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported manifest schema_version %q", manifest.SchemaVersion)
@@ -236,6 +280,8 @@ func ValidateLanguageSelection(languages []string) error {
 	return nil
 }
 
+// ValidateGitHabits checks the schema, profile, Git refs, release settings,
+// remote configuration, and supported action policy.
 func ValidateGitHabits(config GitHabits) error {
 	if config.SchemaVersion != SchemaVersion {
 		return fmt.Errorf("unsupported githabits schema_version %q", config.SchemaVersion)
@@ -308,6 +354,7 @@ func safeGitRef(value string) bool {
 	return value != "" && !strings.HasPrefix(value, "-") && !strings.ContainsAny(value, " ~^:?*[\\\\")
 }
 
+// ScaffoldOptions configures the files and policy created for a project.
 type ScaffoldOptions struct {
 	ProjectName     string
 	Problem         string
@@ -319,12 +366,14 @@ type ScaffoldOptions struct {
 	AllowHere       bool
 }
 
+// ScaffoldResult lists the project root and paths created or left untouched.
 type ScaffoldResult struct {
 	Root    string   `json:"root"`
 	Created []string `json:"created"`
 	Skipped []string `json:"skipped"`
 }
 
+// Assessment describes a read-only preview of paths a scaffold would change.
 type Assessment struct {
 	Mode      string   `json:"mode"`
 	Root      string   `json:"root"`
@@ -334,16 +383,20 @@ type Assessment struct {
 	ReadOnly  bool     `json:"read_only"`
 }
 
+// Projection describes the generated architecture views and their ADR count.
 type Projection struct {
 	ADRCount int      `json:"adr_count"`
 	Paths    []string `json:"paths"`
 }
 
+// OwnershipLedger maps generated project-relative paths to their recorded hashes.
 type OwnershipLedger struct {
 	Version int               `json:"version"`
 	Files   map[string]string `json:"files"`
 }
 
+// UninstallAssessment previews which owned files can be removed and which
+// paths must be preserved as conflicts.
 type UninstallAssessment struct {
 	Mode      string   `json:"mode"`
 	Root      string   `json:"root"`
@@ -353,6 +406,8 @@ type UninstallAssessment struct {
 	ReadOnly  bool     `json:"read_only"`
 }
 
+// UninstallResult lists files removed, preserved, or already missing after
+// an approved uninstall.
 type UninstallResult struct {
 	Root      string   `json:"root"`
 	Removed   []string `json:"removed"`
@@ -360,6 +415,7 @@ type UninstallResult struct {
 	Missing   []string `json:"missing"`
 }
 
+// ArchitectureContract is a generated summary of the project manifest and ADRs.
 type ArchitectureContract struct {
 	SchemaVersion string   `yaml:"schema_version" json:"schema_version"`
 	Revision      int      `yaml:"revision" json:"revision"`

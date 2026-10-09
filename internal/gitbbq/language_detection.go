@@ -26,17 +26,23 @@ var excludedLanguageDirectories = map[string]struct{}{
 
 var errLanguageDetectionLimit = errors.New("language detection file limit reached")
 
+// LanguageEvidence identifies a project-relative path that supports a
+// language candidate. Kind is "manifest" or "source".
 type LanguageEvidence struct {
 	Path string `json:"path"`
 	Kind string `json:"kind"`
 }
 
+// LanguageCandidate groups the evidence found for one supported language.
+// EvidenceOmitted counts additional matches beyond the returned evidence cap.
 type LanguageCandidate struct {
 	Language        string             `json:"language"`
 	Evidence        []LanguageEvidence `json:"evidence"`
 	EvidenceOmitted int                `json:"evidence_omitted,omitempty"`
 }
 
+// LanguageDetection contains the cleaned scan root and detected language
+// candidates. Truncated is true when the scanner reached its file limit.
 type LanguageDetection struct {
 	Root       string              `json:"root"`
 	Candidates []LanguageCandidate `json:"candidates"`

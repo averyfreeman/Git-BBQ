@@ -6,6 +6,9 @@ import (
 	"strings"
 )
 
+// UpdateMattDependency updates the upstream skills repository and commit pin in
+// the manifest and dependency metadata. The generated checkout path cannot be
+// changed by this operation.
 func UpdateMattDependency(root string, dependency MattDependency) (Manifest, error) {
 	manifest, err := loadManifest(root)
 	if err != nil {

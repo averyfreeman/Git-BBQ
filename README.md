@@ -2,63 +2,63 @@
 
 ![Git BBQ grill cartoon](assets/grill-cartoon-illistration_740x740.jpg)
 
-Git BBQ is a Go-first scaffolding and repository-lifecycle tool for coding
-agents. It creates durable project context, Matt-native ADRs, language skills,
-Codex hooks, deterministic projections, and explicit Git workflow policy.
+Git BBQ carries an agent's architecture work from the conversation into the
+repository. It builds on Matt Pocock's upstream engineering skills, including
+their grill-me approach: ask pointed questions that surface assumptions before
+they become surprises in a pull request. Git BBQ records the resulting context
+and architecture decisions, gives agents language-specific project guidance, and
+makes Git permissions explicit. The grill catches vague requirements; the
+repository should remember what the team decided.
 
-Git BBQ does not call a model. The host agent performs architecture reasoning;
-Git BBQ owns project bootstrap, validation, projections, lifecycle hooks, and
-approval-gated Git operations.
+Git BBQ is a Go CLI and a Codex plugin. It does not call a model or write your
+application. Your host agent does the reasoning and implementation. Git BBQ
+keeps the project brief, decisions, generated architecture views, validation,
+and approved Git operations organized around that work. It will not build your
+storefront, but it can help keep checkout decisions from disappearing into the
+chat scrollback.
 
-## Quick start: Secure-Web-Printer
+## Quick start: a Next.js store
 
-Here is a deliberately practical example. Imagine you are starting
-Secure-Web-Printer, a Go HTTPS server with an embedded Let's Encrypt ACME
-requester, HTMX and Markdown templates, and release builds for macOS, Linux,
-and Windows on both x86_64 and ARM64.
+Start with the product brief you would give a coding agent. This example
+scaffolds the repository for a TypeScript Next.js project and records one
+payment decision:
 
-Compile Git BBQ first, then use the resulting binary for the project workflow:
-
-~~~sh
+```sh
 go build -o ./git-bbq ./cmd/git-bbq
 
 ./git-bbq init \
-  --name Secure-Web-Printer \
-  --problem "Build Secure-Web-Printer, a Go HTTPS server with an embedded Let's Encrypt ACME requester, HTMX and Markdown templates, and release binaries for aarch64-darwin, gnu-linux-x86_64, gnu-linux-aarch64, Windows x86_64, and Windows aarch64." \
-  --language go \
-  ./Secure-Web-Printer
+  --name storefront \
+  --problem "Create a modern Next.js e-commerce site, complete with product reviews, testimonials, a product catalog, a shopping cart, and Stripe payments. Include a chatbot popup window for automated customer service, and a modal offering 15% off in exchange for an email address." \
+  --language typescript \
+  ./storefront
 
 ./git-bbq adr new \
-  --title "Set Secure-Web-Printer release targets" \
-  --context "Secure-Web-Printer needs one release matrix for its Go HTTPS server across macOS arm64, Linux x86_64 and arm64, and Windows x86_64 and arm64." \
-  --decision "Use darwin/arm64 (aarch64-darwin), linux/amd64 (gnu-linux-x86_64), linux/arm64 (gnu-linux-aarch64), windows/amd64 (Windows x86_64), and windows/arm64 (Windows aarch64)." \
-  --why "The names make the release promise readable while Go's GOOS and GOARCH pairs keep builds reproducible." \
-  ./Secure-Web-Printer
+  --title "Use Stripe for checkout payments" \
+  --context "The store needs online payments, and the browser must not own payment credentials or decide whether an order is paid." \
+  --decision "Use Stripe for checkout. Keep Stripe credentials on the server and mark orders paid only after verifying Stripe's payment event." \
+  --why "The server boundary protects payment credentials, and a verified payment event gives order fulfillment a reliable signal." \
+  ./storefront
 
-./git-bbq project ./Secure-Web-Printer
-./git-bbq validate ./Secure-Web-Printer
-~~~
+./git-bbq project ./storefront
+./git-bbq validate ./storefront
+```
 
-This example records the release targets; it does not pretend that Git BBQ has
-a target flag or that it writes the HTTPS server for you. The application code,
-Go module, ACME integration, templates, and release pipeline still belong to
-Secure-Web-Printer.
+Git BBQ writes the project brief and TypeScript profile into its project
+scaffold, saves the Stripe choice as a Matt-native ADR, and generates the
+architecture contract, implementation plan, and ADR index. The chatbot, store,
+promotions, and payment integration remain application work for your coding
+agent and team. Git BBQ is the sous-chef for project memory, not a JavaScript
+framework wearing an apron.
 
-### What the example creates
+After these commands, the repository includes:
 
-`init` creates the project contract and agent-facing files. `adr new` adds the
-first decision. `project` creates the deterministic projections, and `validate`
-checks the result without adding another decision history.
-
-After the full sequence above, the project contains:
-
-~~~text
-Secure-Web-Printer/
+```text
+storefront/
 ├── .agents/
 │   ├── mattpocock/DEPENDENCY.yaml
 │   └── skills/
 │       ├── githabits/SKILL.md
-│       └── go/SKILL.md
+│       └── typescript/SKILL.md
 ├── .gitbbq/
 │   ├── .gitignore
 │   ├── hooks.json
@@ -70,73 +70,102 @@ Secure-Web-Printer/
 ├── CONTEXT-MAP.md
 ├── CONTEXT.md
 ├── architecture-contract.yaml
-├── docs/
-│   └── adr/
-│       ├── 0001-set-secure-web-printer-release-targets.md
-│       └── index.json
+├── docs/adr/
+│   ├── 0001-use-stripe-for-checkout-payments.md
+│   └── index.json
 └── implementation-plan.md
-~~~
+```
 
-The useful distinction is between decisions and projections:
+`CONTEXT.md`, `CONTEXT-MAP.md`, and `docs/adr/` hold the project's durable
+context and decisions. `.gitbbq-manifest.yaml` records the project problem,
+language selection, Matt dependency, and hook requirements. `AGENTS.md` routes
+an agent to those instructions. The architecture contract, implementation
+plan, and ADR index are generated projections, so there is one decision history
+to maintain. `.githabits.yaml` describes the Git actions the project allows.
 
-- `CONTEXT.md` and `CONTEXT-MAP.md` hold the project's vocabulary and context
-  routing.
-- `AGENTS.md` points the host agent at those project rules.
-- `.gitbbq-manifest.yaml` records the problem, language profile, pinned Matt
-  dependency, and required hooks.
-- `.githabits.yaml` makes Git behavior explicit instead of leaving it to an
-  agent's assumptions.
-- `docs/adr/0001-...md` is the human-readable architectural decision.
-- `architecture-contract.yaml`, `implementation-plan.md`, and
-  `docs/adr/index.json` are generated views of the source documents.
-- `.gitbbq/ownership.json`, `.gitbbq/hooks.json`, `.gitbbq/session.json`, and
-  `.gitbbq/.gitignore` track Git BBQ's generated operational state.
+## How Git BBQ fits the workflow
 
-### The five release targets
+Matt's skills help an agent investigate a problem and work through architecture
+questions. Git BBQ gives that work a home in the repository. The host agent
+still chooses the design and writes application code; Git BBQ provides the
+scaffold, durable records, and checks around it.
 
-The readable product names map to Go's GOOS and GOARCH values like this:
+### Language profiles and scaffolding
 
-| Release label | GOOS | GOARCH |
-| --- | --- | --- |
-| aarch64-darwin | darwin | arm64 |
-| gnu-linux-x86_64 | linux | amd64 |
-| gnu-linux-aarch64 | linux | arm64 |
-| Windows x86_64 | windows | amd64 |
-| Windows aarch64 | windows | arm64 |
+Git BBQ supports Go, Python, TypeScript, JavaScript, Rust, Java, and C#. During
+interactive setup it detects candidates, shows evidence paths, lets you edit
+the full language set, and asks for confirmation before writing. An explicit
+`--language` selection takes precedence. Non-interactive setup uses a saved
+project or user selection; if neither exists, it reports candidates and stops
+without writing.
 
-Once the project has a `go.mod` and an application entry point, its release
-commands can be as plain as:
+Language profiles add focused guidance to `AGENTS.md`, language skills, and
+`implementation-plan.md`. The generated project's `CONTEXT.md` and
+`CONTEXT-MAP.md` formats remain stable. Start with `git-bbq init --interactive`
+when you want the CLI to propose a language set for review.
 
-~~~sh
-mkdir -p dist
-GOOS=darwin GOARCH=arm64 go build -o dist/Secure-Web-Printer-aarch64-darwin ./...
-GOOS=linux GOARCH=amd64 go build -o dist/Secure-Web-Printer-gnu-linux-x86_64 ./...
-GOOS=linux GOARCH=arm64 go build -o dist/Secure-Web-Printer-gnu-linux-aarch64 ./...
-GOOS=windows GOARCH=amd64 go build -o dist/Secure-Web-Printer-windows-x86_64.exe ./...
-GOOS=windows GOARCH=arm64 go build -o dist/Secure-Web-Printer-windows-aarch64.exe ./...
-~~~
+### Validation and architecture projections
 
-Those build commands are application work. Git BBQ's job is to make the
-decision and its surrounding project context visible before that work begins.
+`git-bbq validate` checks the project manifest, ADRs, hook policy, and generated
+architecture projections. It reports projection drift and scans bounded
+architecture and Git-policy files for secret-like values. Findings identify a
+file, line, and finding type without printing the detected value.
 
-## Project contract
+`git-bbq project` regenerates the architecture contract, implementation plan,
+and ADR index from the manifest and Matt-native ADRs. Those generated files
+help tools consume decisions consistently; they are not another place to edit
+the project's architecture.
 
-A Git BBQ project uses:
+### Migrating an AI Software Architect project
 
-- `CONTEXT.md` and `CONTEXT-MAP.md` for project vocabulary;
-- `docs/adr/` as the architectural decision source of truth;
-- `.gitbbq-manifest.yaml` for project and dependency metadata;
-- `.githabits.yaml` for explicit Git lifecycle policy;
-- `.agents/skills/` for githabits and selected language skills;
-- generated `architecture-contract.yaml`, `implementation-plan.md`, and
-  `docs/adr/index.json` projections.
+Migration begins with a read-only assessment:
 
-The detailed contract is in [docs/GIT_BBQ.md](docs/GIT_BBQ.md).
+```sh
+git-bbq migrate ./existing-project
+```
 
-## Plugin packages
+Review its proposed files and conflicts before applying it:
 
-Build the local Codex desktop package, including its portable manifest,
-compatibility manifest, five lifecycle hooks, launchers, and Go runtimes:
+```sh
+git-bbq migrate --approve ./existing-project
+```
+
+The migration converts supported language and problem fields and compatible
+architecture decisions into Git BBQ's current project and Matt-native ADR
+formats. It preserves the legacy files. Replacing an incompatible legacy
+`.githabits.yaml` also requires `--archive-legacy-githabits`, which keeps the
+original file in the migration archive. See the
+[legacy migration guide](docs/agents/legacy-migration.md) for conversion rules.
+
+### Git actions require a plan and approval
+
+Git BBQ separates read-only planning from execution. A plan checks project
+policy and shows the exact argument-separated Git command. Execution requires
+`--approve` and rechecks the policy before running it:
+
+```sh
+git-bbq githabits plan --action stage --path docs/adr/0001-use-stripe-for-checkout-payments.md
+
+git-bbq githabits execute \
+  --approve \
+  --action stage \
+  --path docs/adr/0001-use-stripe-for-checkout-payments.md
+```
+
+The `manual` and `guided` profiles do not authorize Git mutations by default.
+The `autonomous` profile enables individual action switches, but execution
+still requires explicit approval. Git BBQ does not force-push or rewrite shared
+history.
+
+## Codex plugin
+
+The local plugin package includes the portable manifest, Codex compatibility
+manifest, curated skills, Go CLI runtimes, launchers, and five lifecycle hooks:
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostCompact`, and `Stop`.
+Hooks run only through the local Codex host. Review and trust them with `/hooks`
+after installation.
+
+Build and validate the local package:
 
 ```sh
 python3 scripts/build_git_bbq_plugin.py \
@@ -147,22 +176,19 @@ python3 scripts/build_git_bbq_plugin.py \
 python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --variant local --target all
 ```
 
-The package contains exactly five lifecycle hooks and embeds the `git-bbq`
-runtime for the four supported targets. Selected stable engineering and
-productivity skills are exported from the exact upstream commit pinned by the
-`.agents/skills` submodule, then copied under their upstream names. Root-owned
-`git-bbq-curation.json` selects the package surface. Skill instructions and
-support files remain upstream content. The build maps the non-standard
-`disable-model-invocation` field to its equivalent Codex policy and carries any
-non-standard `argument-hint` into namespaced standard metadata. The package
-records each upstream path and commit in `skills/matt-skills-manifest.json`.
+The builder pins the curated engineering and productivity skills to the exact
+upstream commit recorded by the `.agents/skills` submodule. Curation belongs to
+Git BBQ; upstream skill instructions and support files remain upstream content.
 
-Build the hook-free, public-oriented variant for submission preflight with
-`--variant public`. It includes the curated skills and local CLI binaries, but
-does not give ChatGPT web installs access to a user's local repository or make
-the CLI executable there. See [the submission handoff](docs/PLUGIN_SUBMISSION.md).
+Build the hook-free, public-oriented package for submission preflight with
+`--variant public`. It retains the selected skills and local CLI runtime, but
+cannot give a ChatGPT web install access to the user's repository or execute a
+local CLI. A hook-free build addresses the hook packaging constraint; it does
+not guarantee marketplace acceptance. Read the
+[plugin submission guide](docs/PLUGIN_SUBMISSION.md) before preparing a public
+submission.
 
-To make it available in Codex CLI and ChatGPT desktop:
+To install this repository's local marketplace in Codex:
 
 ```sh
 codex plugin marketplace add .
@@ -170,28 +196,40 @@ codex plugin add git-bbq@git-bbq-local
 codex plugin list
 ```
 
-Restart the Codex host after rebuilding the package. In Codex CLI, run `/hooks`
-to review and trust the bundled lifecycle definition, then test in a new
-thread. See
-[docs/LOCAL_PLUGIN.md](docs/LOCAL_PLUGIN.md) and
-[docs/PLUGIN_SUBMISSION.md](docs/PLUGIN_SUBMISSION.md).
+Restart the Codex host after rebuilding a package, then review the hook
+configuration in a new thread. See the
+[local plugin guide](docs/LOCAL_PLUGIN.md) for installation and troubleshooting.
 
 ## Development
 
+The CLI and project behavior live in `cmd/git-bbq` and `internal/gitbbq`.
+Portable plugin packaging and Codex-specific integration live under
+`adapters/codex` and `scripts/`.
+
 ```sh
-gofmt -w cmd internal
+test -z "$(gofmt -l cmd internal)"
 go test ./...
 go vet ./...
 go build ./cmd/git-bbq
+PYTHONPATH=scripts python3 -m unittest scripts/test_build_git_bbq_plugin.py
 go run ./cmd/git-bbq schema .
 ```
 
-Generated schemas under `schemas/gitbbq/` are derived from Go contracts and
-must not be hand-edited.
+Generated schemas under `schemas/gitbbq/` come from Go contracts and must not
+be edited by hand. The [development guide](docs/DEVELOPMENT.md) describes the
+package build and upstream skill update workflows.
 
 ## Safety boundaries
 
-Git BBQ treats repository contents as untrusted data, keeps static inspection
-bounded, preserves existing files by default, and separates read-only plans
-from approved Git mutations. It never force-pushes, rewrites shared history, or
-silently creates a remote.
+Git BBQ treats repository contents as untrusted data, bounds static inspection,
+preserves existing files by default, and separates plans from approved Git
+mutations. It never creates a remote silently. Existing project files stay in
+place unless the user approves an operation that changes them.
+
+## Documentation
+
+- [Project behavior and file contracts](docs/GIT_BBQ.md)
+- [Local Codex installation](docs/LOCAL_PLUGIN.md)
+- [Development and packaging](docs/DEVELOPMENT.md)
+- [Legacy project migration](docs/agents/legacy-migration.md)
+- [Public plugin submission preflight](docs/PLUGIN_SUBMISSION.md)

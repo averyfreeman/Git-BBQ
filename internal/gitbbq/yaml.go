@@ -154,6 +154,7 @@ func loadManifest(root string) (Manifest, error) {
 	return manifest, nil
 }
 
+// ReadManifest strictly parses and validates root's Git BBQ manifest.
 func ReadManifest(root string) (Manifest, error) {
 	return loadManifest(root)
 }
@@ -169,6 +170,7 @@ func loadGitHabits(root string) (GitHabits, error) {
 	return config, nil
 }
 
+// ReadGitHabits strictly parses and validates root's Git policy configuration.
 func ReadGitHabits(root string) (GitHabits, error) {
 	return loadGitHabits(root)
 }

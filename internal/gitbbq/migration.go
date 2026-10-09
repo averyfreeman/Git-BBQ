@@ -15,7 +15,10 @@ import (
 )
 
 const (
+	// LegacyScaffoldFilename is the configuration filename recognized by the
+	// AI Software Architect migration reader.
 	LegacyScaffoldFilename = ".adr-scaffold.yaml"
+	// LegacyArchitectDir is the directory recognized for legacy architect data.
 	LegacyArchitectDir     = ".ai-architect"
 	legacyDecisionLimit    = 200
 	legacyDecisionMaxBytes = 500_000
@@ -29,6 +32,8 @@ var (
 	legacyDatePattern             = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 )
 
+// MigrationAssessment describes the read-only compatibility check and proposed
+// changes for a legacy project migration.
 type MigrationAssessment struct {
 	Mode              string   `json:"mode"`
 	Root              string   `json:"root"`
@@ -44,6 +49,8 @@ type MigrationAssessment struct {
 	ReadOnly          bool     `json:"read_only"`
 }
 
+// MigrationResult reports files created, skipped, or archived by an approved
+// legacy migration.
 type MigrationResult struct {
 	Root         string   `json:"root"`
 	Created      []string `json:"created"`
