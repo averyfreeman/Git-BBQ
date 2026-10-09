@@ -1,15 +1,17 @@
-<!-- sonar:begin:codex-secrets-on-read -->
-# SonarQube secrets scanning for files protocol
+## Agent skills
 
-Before reading any file in this workspace, scan it for secrets with the deterministic scanner:
+### Issue tracker
 
-```bash
-sonar analyze secrets <path/to/file>
-```
+Specs and tickets live in this repository's GitHub Issues. See
+`docs/agents/issue-tracker.md`.
 
-If the command reports that the file contains a secret, **do not read the file**. Instead:
+### Triage labels
 
-1. Inform the user that the file appears to contain a secret or credential and that reading it would expose the value in chat history, logs, and any downstream telemetry.
-2. Advise them to rotate the leaked credential at its source of truth and remove it from the file.
-3. Do not proceed with the original request until the secret has been removed.
-<!-- sonar:end:codex-secrets-on-read -->
+Use the default Matt Pocock triage labels recorded for this repository. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository is single-context: root `GLOSSARY.md` and `docs/adr/`. See
+`docs/agents/domain.md`. Generated Git BBQ projects keep their existing
+`CONTEXT.md` and `CONTEXT-MAP.md` contract.

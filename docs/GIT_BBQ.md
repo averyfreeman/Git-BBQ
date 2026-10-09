@@ -24,7 +24,7 @@ project contains:
 | `.gitbbq-manifest.yaml` | Project problem, languages, pinned Matt dependency, and hooks |
 | `AGENTS.md` | Thin Codex agent router |
 | `.agents/skills/` | Githabits plus selected language skills |
-| `.agents/mattpocock/DEPENDENCY.yaml` | Maintained Matt-skills derivative repository and commit pin |
+| `.agents/mattpocock/DEPENDENCY.yaml` | Upstream Matt Pocock skills repository and commit pin |
 | `architecture-contract.yaml` | Generated contract projection |
 | `implementation-plan.md` | Generated implementation projection |
 | `docs/adr/index.json` | Generated ADR retrieval projection |
@@ -105,7 +105,8 @@ python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq --target all
 
 The package exposes the structured `Git BBQ` identity and direct `$git-bbq`
 skill through a portable root `plugin.json` plus a Codex compatibility
-manifest. It installs exactly five required hooks: `UserPromptSubmit`,
+manifest. It includes selected stable upstream skills under their original
+names. It installs exactly five required hooks: `UserPromptSubmit`,
 `PreToolUse`, `PostToolUse`, `PostCompact`, and `Stop`. The runtime accepts one
 JSON event on standard input and fails closed when the current workspace lacks a
 valid Git BBQ manifest or hook configuration.
@@ -136,16 +137,20 @@ An explicit `git-bbq update --approve --commit <pin>` changes the Matt dependenc
 pin in both the manifest and its dependency metadata. Validation never fetches or
 silently changes the pinned dependency.
 
-The `v0.3.0` release pins the maintained derivative source at `v0.2.0` and makes
-its curation manifest authoritative. The package contains 16 canonical Matt
-entrypoints, including `grill-no-docs` as an alias of `grill`; source paths and
-upstream history remain in the derivative repository.
+The plugin source is pinned directly to `mattpocock/skills`. The root
+`git-bbq-curation.json` selects all stable skills in the upstream
+`engineering` and `productivity` categories; package entries retain their
+upstream names and source paths. The generated-project dependency metadata uses
+the same upstream repository and commit while keeping the existing
+`.agents/mattpocock` path and `CONTEXT.md` / `CONTEXT-MAP.md` project format.
+That generated-project context contract is separate from the root `GLOSSARY.md`
+used by the upstream setup workflow in this repository.
 
 ## External Matt dependency
 
-New projects record the maintained derivative repository and commit under
-`.agents/mattpocock/DEPENDENCY.yaml`. The `v0.3.0` pin is
-`https://github.com/averyfreeman/git-bbq-matt-skills.git` at
-`64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa` (`v0.2.0`). The existing downstream
-dependency path contract remains `.agents/mattpocock`. Git BBQ does not silently
-fetch or replace a project dependency during validation.
+New projects record the upstream repository and commit under
+`.agents/mattpocock/DEPENDENCY.yaml`. The current pin is
+`https://github.com/mattpocock/skills.git` at
+`b0618bc436ad893b3c5e84e55fba86586d34a404`. The existing dependency path
+contract remains `.agents/mattpocock`. Git BBQ does not silently fetch or
+replace a project dependency during validation.

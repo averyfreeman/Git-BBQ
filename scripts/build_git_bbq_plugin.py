@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import io
 import json
 import os
 import platform
@@ -13,80 +14,16 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_VERSION = "0.3.0"
-SKILLS_REPOSITORY = "https://github.com/averyfreeman/git-bbq-matt-skills.git"
-SKILLS_COMMIT = "64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa"
+DEFAULT_VERSION = "0.4.0"
+SKILLS_REPOSITORY = "https://github.com/mattpocock/skills.git"
 CURATION_FILENAME = "git-bbq-curation.json"
 SELECTION_MANIFEST_FILENAME = "skills/matt-skills-manifest.json"
-PACKAGED_STATUSES = frozenset({"keep", "alias"})
-CURATION_STATUSES = frozenset({"keep", "hold", "alias", "omit"})
-PUBLIC_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-US_ENGLISH_REPLACEMENTS = {
-    "behaviour": "behavior",
-    "behaviours": "behaviors",
-    "colour": "color",
-    "colours": "colors",
-    "centre": "center",
-    "centres": "centers",
-    "labelled": "labeled",
-    "labelling": "labeling",
-    "modelling": "modeling",
-    "optimise": "optimize",
-    "optimised": "optimized",
-    "optimising": "optimizing",
-    "prioritise": "prioritize",
-    "prioritised": "prioritized",
-    "prioritising": "prioritizing",
-    "recognised": "recognized",
-    "summarise": "summarize",
-    "summarised": "summarized",
-    "summarising": "summarizing",
-    "travelling": "traveling",
-    "artefact": "artifact",
-    "artefacts": "artifacts",
-    "authorise": "authorize",
-    "authorised": "authorized",
-    "authorising": "authorizing",
-    "minimise": "minimize",
-    "minimised": "minimized",
-    "minimising": "minimizing",
-    "organisation": "organization",
-    "organisations": "organizations",
-    "programme": "program",
-    "programmes": "programs",
-    "favour": "favor",
-    "licence": "license",
-}
-TEXT_SUFFIXES = {
-    ".cjs",
-    ".go",
-    ".html",
-    ".js",
-    ".json",
-    ".md",
-    ".mjs",
-    ".py",
-    ".sh",
-    ".txt",
-    ".ts",
-    ".yaml",
-    ".yml",
-}
-CLAUDE_FRONTMATTER = re.compile(r"(?m)^disable-model-invocation:\s*(?:true|false)\s*\n")
-BRANDING_REPLACEMENTS = (
-    ("Claude Code", "Codex CLI"),
-    ("Claude → Codex", "Codex"),
-    ("CLAUDE.md", "AGENTS.md"),
-    ("CLAUDE_PROJECT_DIR", "CODEX_PROJECT_DIR"),
-    (".claude/", ".codex/"),
-    ("Claude", "Codex"),
-    ("claude", "codex"),
-    ("Anthropic", "OpenAI"),
-    ("anthropic", "openai"),
-)
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+STABLE_SKILL_CATEGORIES = ("engineering", "productivity")
 TARGETS = {
     "windows-x86_64": ("windows", "amd64", "git-bbq.exe"),
     "aarch64-darwin": ("darwin", "arm64", "git-bbq"),
@@ -97,26 +34,20 @@ TARGETS = {
 
 @dataclass(frozen=True)
 class CuratedSkill:
-    """Describe one manifest entry selected for Git BBQ packaging."""
+    """Describe an unchanged upstream skill selected for packaging."""
 
     source_path: str
-    public_name: str
-    alias_of: str | None
+    name: str
 
 
 @dataclass(frozen=True)
 class SkillSource:
-    """Describe a pinned derivative source and its manifest-driven selection."""
+    """Describe the upstream pin and root-owned package selection."""
 
     repository: str
     commit: str
     checkout: Path
-    source_root: str
     selection: tuple[CuratedSkill, ...]
-    transform: bool = True
-
-
-SOURCE_PIN = (SKILLS_REPOSITORY, SKILLS_COMMIT)
 
 
 def current_target() -> str:
@@ -147,218 +78,270 @@ def git_head(path: Path) -> str | None:
     return result.stdout.strip()
 
 
-def local_pinned_checkout(source_spec: SkillSource) -> Path | None:
-    candidate = ROOT / ".agents/skills"
-    if candidate.is_dir() and git_head(candidate) == source_spec.commit:
-        return candidate
-    return None
+def git_output(path: Path, *arguments: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), *arguments],  # noqa: S603, S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip()
 
 
-def load_pinned_source(checkout: Path, repository: str, commit: str) -> SkillSource:
-    manifest_path = checkout / CURATION_FILENAME
+def discover_stable_skill_paths(repository_root: Path) -> set[str]:
+    paths: set[str] = set()
+    for category in STABLE_SKILL_CATEGORIES:
+        category_root = repository_root / "skills" / category
+        if not category_root.is_dir():
+            continue
+        paths.update(
+            child.relative_to(repository_root).as_posix()
+            for child in category_root.iterdir()
+            if child.is_dir() and (child / "SKILL.md").is_file()
+        )
+    return paths
+
+
+def validate_curation(manifest: dict, repository_root: Path) -> list[CuratedSkill]:
+    if not isinstance(manifest, dict) or manifest.get("schemaVersion") != 1:
+        raise SystemExit("root curation manifest schemaVersion must be 1")
+    source = manifest.get("source")
+    if not isinstance(source, dict):
+        raise SystemExit("root curation manifest must define its upstream source")
+    if source.get("repository") != SKILLS_REPOSITORY:
+        raise SystemExit(f"skill source must be the upstream repository: {SKILLS_REPOSITORY}")
+    commit = source.get("commit")
+    if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise SystemExit("skill source must pin a 40-character commit")
+
+    entries = manifest.get("skills")
+    if not isinstance(entries, list) or not entries:
+        raise SystemExit("root curation manifest must select at least one skill")
+
+    selection: list[CuratedSkill] = []
+    seen_paths: set[str] = set()
+    seen_names: set[str] = set()
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise SystemExit("root curation entries must be objects")
+        source_path = entry.get("path")
+        name = entry.get("name")
+        if (
+            not isinstance(source_path, str)
+            or not source_path.startswith("skills/")
+            or Path(source_path).is_absolute()
+            or ".." in Path(source_path).parts
+            or Path(source_path).as_posix() != source_path
+            or len(Path(source_path).parts) != 3
+        ):
+            raise SystemExit(f"root curation entry has an invalid upstream path: {source_path!r}")
+        if source_path in seen_paths:
+            raise SystemExit(f"root curation manifest has a duplicate source path: {source_path}")
+        if not isinstance(name, str) or not SKILL_NAME_PATTERN.fullmatch(name):
+            raise SystemExit(f"root curation entry has an invalid upstream name: {name!r}")
+        if name != Path(source_path).name:
+            raise SystemExit(f"skill name must preserve the upstream directory name: {source_path}")
+        if name in seen_names:
+            raise SystemExit(f"root curation manifest has a duplicate skill name: {name}")
+        if not (repository_root / source_path / "SKILL.md").is_file():
+            raise SystemExit(f"selected upstream skill is missing SKILL.md: {source_path}")
+        seen_paths.add(source_path)
+        seen_names.add(name)
+        selection.append(CuratedSkill(source_path=source_path, name=name))
+    discovered = discover_stable_skill_paths(repository_root)
+    selected = {item.source_path for item in selection}
+    if selected != discovered:
+        missing = sorted(discovered - selected)
+        stale = sorted(selected - discovered)
+        details = []
+        if missing:
+            details.append(f"unselected stable skills: {', '.join(missing)}")
+        if stale:
+            details.append(f"paths outside the stable selection: {', '.join(stale)}")
+        raise SystemExit("root curation manifest does not match its stable-skill policy (" + "; ".join(details) + ")")
+    return selection
+
+
+def load_pinned_source(checkout: Path) -> SkillSource:
+    manifest_path = ROOT / CURATION_FILENAME
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"could not read derivative curation manifest {manifest_path}: {exc}") from exc
+        raise SystemExit(f"could not read root skill curation manifest {manifest_path}: {exc}") from exc
     selection = validate_curation(manifest, checkout)
-    derivative = manifest.get("derivative", {})
-    if derivative.get("repository") != repository:
-        raise SystemExit(
-            "curation manifest derivative repository does not match the pinned package source: "
-            f"{derivative.get('repository')!r}"
-        )
+    source = manifest["source"]
     return SkillSource(
-        repository=repository,
-        commit=commit,
+        repository=source["repository"],
+        commit=source["commit"],
         checkout=checkout,
-        source_root="skills",
         selection=tuple(selection),
     )
 
 
-def copy_matt_skills(output: Path, source_spec: SkillSource | None = None) -> None:
-    if isinstance(source_spec, SkillSource):
-        repository = source_spec.repository
-        commit = source_spec.commit
-        checkout = source_spec.checkout
-    else:
-        repository, commit = SOURCE_PIN
-        checkout = None
-        candidate = ROOT / ".agents/skills"
-        if candidate.is_dir() and git_head(candidate) == commit:
-            checkout = candidate
+def copy_matt_skills(output: Path) -> None:
+    manifest_path = ROOT / CURATION_FILENAME
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"could not read root skill curation manifest {manifest_path}: {exc}") from exc
+    source = manifest.get("source", {})
+    repository = source.get("repository")
+    commit = source.get("commit")
+    if repository != SKILLS_REPOSITORY or not isinstance(commit, str):
+        raise SystemExit("root curation manifest does not pin the upstream Matt Pocock repository")
 
-    if checkout is not None:
-        pinned_source = load_pinned_source(checkout, repository, commit)
-        copy_skill_directories(pinned_source, output)
+    checkout = ROOT / ".agents/skills"
+    if checkout.is_dir():
+        if git_head(checkout) != commit:
+            raise SystemExit(
+                f"upstream skill submodule is not at pinned commit {commit}; "
+                "run git submodule update --init"
+            )
+        remote = git_output(checkout, "remote", "get-url", "origin")
+        if remote != repository:
+            raise SystemExit(f"upstream skill submodule origin must be {repository}; found {remote!r}")
+        dirty = git_output(checkout, "status", "--porcelain", "--untracked-files=all")
+        if dirty is None:
+            raise SystemExit(f"could not inspect upstream skill submodule: {checkout}")
+        if dirty:
+            raise SystemExit("upstream skill submodule must be clean before package build")
+        source_spec = load_pinned_source(checkout)
+        with tempfile.TemporaryDirectory(prefix="git-bbq-skills-export-") as temporary:
+            exported = export_pinned_selection(source_spec, Path(temporary))
+            copy_skill_directories(exported, output)
         return
 
     with tempfile.TemporaryDirectory(prefix="git-bbq-skills-") as temporary:
-        checkout = Path(temporary) / "git-bbq-matt-skills"
-        subprocess.run(  # noqa: S603 - fixed derivative repository and arguments
-            [
-                "git",
-                "clone",
-                "--filter=blob:none",
-                "--no-checkout",
-                repository,
-                str(checkout),
-            ],
+        checkout = Path(temporary) / "skills"
+        subprocess.run(
+            ["git", "clone", "--filter=blob:none", "--no-checkout", repository, str(checkout)],
             cwd=ROOT,
             check=True,
         )
-        subprocess.run(  # noqa: S603 - fixed checkout and pinned commit
-            ["git", "-C", str(checkout), "checkout", "--detach", commit],  # noqa: S607
+        subprocess.run(
+            ["git", "-C", str(checkout), "checkout", "--detach", commit],
             cwd=ROOT,
             check=True,
         )
         if git_head(checkout) != commit:
-            raise SystemExit(f"derivative checkout is not pinned to {commit}")
-        pinned_source = load_pinned_source(checkout, repository, commit)
-        copy_skill_directories(pinned_source, output)
+            raise SystemExit(f"upstream skill checkout is not pinned to {commit}")
+        source_spec = load_pinned_source(checkout)
+        with tempfile.TemporaryDirectory(prefix="git-bbq-skills-export-") as exported_directory:
+            exported = export_pinned_selection(source_spec, Path(exported_directory))
+            copy_skill_directories(exported, output)
+
+
+def export_pinned_selection(source_spec: SkillSource, destination: Path) -> SkillSource:
+    """Export only files from the pinned Git tree, never from the worktree."""
+
+    destination.mkdir(parents=True, exist_ok=True)
+    paths = [item.source_path for item in source_spec.selection]
+    license_in_tree = subprocess.run(
+        ["git", "-C", str(source_spec.checkout), "cat-file", "-e", f"{source_spec.commit}:LICENSE"],  # noqa: S603, S607
+        check=False,
+        capture_output=True,
+    )
+    if license_in_tree.returncode == 0:
+        paths.append("LICENSE")
+    try:
+        archive = subprocess.run(
+            ["git", "-C", str(source_spec.checkout), "archive", "--format=tar", source_spec.commit, *paths],  # noqa: S603, S607
+            check=True,
+            capture_output=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit(f"could not export pinned upstream skills: {exc}") from exc
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as bundle:
+            for member in bundle.getmembers():
+                member_path = Path(member.name)
+                if member_path.is_absolute() or ".." in member_path.parts:
+                    raise SystemExit(f"pinned source archive contains an unsafe path: {member.name}")
+            bundle.extractall(destination, filter="data")
+    except (tarfile.TarError, OSError) as exc:
+        raise SystemExit(f"could not unpack pinned upstream skills: {exc}") from exc
+    return SkillSource(
+        repository=source_spec.repository,
+        commit=source_spec.commit,
+        checkout=destination,
+        selection=source_spec.selection,
+    )
 
 
 def copy_skill_directories(source_spec: SkillSource, output: Path) -> None:
     destination_root = output / "skills"
     destination_root.mkdir(parents=True, exist_ok=True)
-    name_map = {Path(item.source_path).name: item.public_name for item in source_spec.selection}
     write_selection_manifest(output, source_spec)
+    upstream_license = source_spec.checkout / "LICENSE"
+    if upstream_license.is_file():
+        copy_file(upstream_license, output / "licenses/mattpocock-skills/LICENSE")
     for item in source_spec.selection:
-        skill = source_spec.checkout / item.source_path
-        if not (skill / "SKILL.md").is_file():
-            raise SystemExit(f"pinned derivative skill is missing SKILL.md: {item.source_path}")
-        destination = destination_root / f"mattpocock-{item.public_name}"
-        shutil.copytree(skill, destination)
-        if source_spec.transform:
-            sanitize_skill_directory(destination, name_map)
-            rewrite_curated_skill(item.source_path, destination, item.public_name)
+        source_directory = source_spec.checkout / item.source_path
+        destination = destination_root / item.name
+        shutil.copytree(source_directory, destination)
+        adapt_agent_skills_frontmatter(destination / "SKILL.md", destination)
 
 
-def validate_curation(manifest: dict, repository_root: Path) -> list[CuratedSkill]:
-    if not isinstance(manifest, dict):
-        raise SystemExit("curation manifest must be a JSON object")
-    if manifest.get("schemaVersion") != 2:
-        raise SystemExit("curation manifest schemaVersion must be 2")
-    allowed_statuses = manifest.get("statuses")
-    if (
-        not isinstance(allowed_statuses, list)
-        or len(allowed_statuses) != len(CURATION_STATUSES)
-        or not all(isinstance(value, str) for value in allowed_statuses)
-        or set(allowed_statuses) != CURATION_STATUSES
-    ):
-        raise SystemExit("curation manifest statuses must be keep, hold, alias, and omit")
-    entries = manifest.get("skills")
-    if not isinstance(entries, list):
-        raise SystemExit("curation manifest skills must be an array")
-
-    skills_root = repository_root / "skills"
-    discovered_paths = {
-        path.parent.relative_to(repository_root).as_posix()
-        for path in skills_root.rglob("SKILL.md")
-    } if skills_root.is_dir() else set()
-    seen_paths: set[str] = set()
-    by_path: dict[str, dict] = {}
-    by_public_name: dict[str, dict] = {}
-    for entry in entries:
-        if not isinstance(entry, dict):
-            raise SystemExit("curation manifest entries must be objects")
-        path = entry.get("path")
-        if not isinstance(path, str) or not path or Path(path).is_absolute() or ".." in Path(path).parts:
-            raise SystemExit(f"curation manifest has invalid skill path: {path!r}")
-        if path in seen_paths:
-            raise SystemExit(f"curation manifest has duplicate skill path: {path}")
-        seen_paths.add(path)
-        by_path[path] = entry
-        status = entry.get("status")
-        if status not in allowed_statuses or status not in CURATION_STATUSES:
-            raise SystemExit(f"curation manifest has invalid status {status!r} for {path}")
-        public_name = entry.get("publicName")
-        if status in PACKAGED_STATUSES:
-            if not isinstance(public_name, str) or not PUBLIC_NAME_PATTERN.fullmatch(public_name):
-                raise SystemExit(f"packaged curation entry needs a valid publicName: {path}")
-            if public_name in by_public_name:
-                raise SystemExit(f"curation manifest has duplicate public name: {public_name}")
-            by_public_name[public_name] = entry
-            if status == "keep" and entry.get("aliasOf") is not None:
-                raise SystemExit(f"canonical curation entry cannot define aliasOf: {path}")
-        elif public_name is not None or entry.get("aliasOf") is not None:
-            raise SystemExit(f"non-packaged curation entry cannot define publicName or aliasOf: {path}")
-
-        dependencies = entry.get("dependencies", [])
-        if not isinstance(dependencies, list) or not all(isinstance(value, str) for value in dependencies):
-            raise SystemExit(f"curation manifest dependencies must be strings: {path}")
-
-    missing_entries = sorted(discovered_paths - seen_paths)
-    missing_source_paths = sorted(seen_paths - discovered_paths)
-    if missing_entries:
-        raise SystemExit("curation manifest is missing source paths: " + ", ".join(missing_entries))
-    if missing_source_paths:
-        raise SystemExit("curation manifest references missing source paths: " + ", ".join(missing_source_paths))
-    if len(seen_paths) != len(entries):
-        raise SystemExit("curation manifest contains duplicate skill paths")
-
-    for path, entry in by_path.items():
-        for dependency in entry.get("dependencies", []):
-            if dependency not in by_path:
-                raise SystemExit(f"curation manifest dependency does not name a source path: {path} -> {dependency}")
-
-    def resolve_target(target: str) -> dict | None:
-        if target in by_path:
-            return by_path[target]
-        return by_public_name.get(target)
-
-    visiting: set[str] = set()
-    resolved: set[str] = set()
-
-    def visit(path: str) -> None:
-        if path in resolved:
-            return
-        if path in visiting:
-            raise SystemExit(f"curation manifest alias cycle includes: {path}")
-        visiting.add(path)
-        entry = by_path[path]
-        if entry["status"] == "alias":
-            target = entry.get("aliasOf")
-            if not isinstance(target, str) or not target:
-                raise SystemExit(f"alias curation entry needs aliasOf: {path}")
-            target_entry = resolve_target(target)
-            if target_entry is None:
-                raise SystemExit(f"alias targets an unknown skill: {path} -> {target}")
-            target_path = next(
-                candidate_path for candidate_path, candidate in by_path.items() if candidate is target_entry
-            )
-            if target_entry["status"] not in PACKAGED_STATUSES:
-                raise SystemExit(f"alias targets a non-packaged skill: {path} -> {target}")
-            visit(target_path)
-        visiting.remove(path)
-        resolved.add(path)
-
-    for path in by_path:
-        visit(path)
-
-    return [
-        CuratedSkill(
-            source_path=entry["path"],
-            public_name=entry["publicName"],
-            alias_of=entry.get("aliasOf"),
-        )
-        for entry in entries
-        if entry["status"] in PACKAGED_STATUSES
-    ]
+def adapt_agent_skills_frontmatter(skill_path: Path, skill_directory: Path) -> None:
+    content = skill_path.read_text(encoding="utf-8")
+    match = re.match(r"\A---\r?\n(?P<frontmatter>.*?)\r?\n---(?P<rest>\r?\n.*)\Z", content, re.DOTALL)
+    if match is None:
+        raise SystemExit(f"upstream skill has invalid YAML frontmatter: {skill_path}")
+    frontmatter = match.group("frontmatter")
+    manual_only = re.search(r"(?m)^disable-model-invocation:\s*(\S+)\s*$", frontmatter)
+    argument_hint = re.search(r"(?m)^argument-hint:\s*(.*?)\s*$", frontmatter)
+    if manual_only is None and argument_hint is None:
+        return
+    if manual_only is not None and manual_only.group(1).lower() != "true":
+        raise SystemExit(f"unsupported disable-model-invocation value in {skill_path}")
+    if manual_only is not None:
+        openai_metadata = skill_directory / "agents/openai.yaml"
+        try:
+            openai_text = openai_metadata.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise SystemExit(
+                f"manual-only upstream skill lacks Codex invocation policy: {openai_metadata}"
+            ) from exc
+        if not re.search(r"(?m)^\s+allow_implicit_invocation:\s*false\s*$", openai_text):
+            raise SystemExit(f"manual-only upstream skill lacks allow_implicit_invocation: false: {openai_metadata}")
+        frontmatter = re.sub(r"(?m)^disable-model-invocation:\s*true\s*\r?\n?", "", frontmatter)
+    if argument_hint is not None:
+        hint_value = argument_hint.group(1).strip()
+        if hint_value.startswith('"') and hint_value.endswith('"'):
+            try:
+                hint_value = json.loads(hint_value)
+            except json.JSONDecodeError as exc:
+                raise SystemExit(f"unsupported argument-hint value in {skill_path}") from exc
+        elif hint_value.startswith("'") and hint_value.endswith("'"):
+            hint_value = hint_value[1:-1].replace("''", "'")
+        frontmatter = re.sub(r"(?m)^argument-hint:[ \t]*[^\r\n]*(?:\r?\n|$)", "", frontmatter)
+        metadata_header = re.search(r"(?m)^metadata:[ \t]*\r?\n", frontmatter)
+        hint_line = f"  git-bbq-argument-hint: {json.dumps(hint_value, ensure_ascii=False)}\n"
+        if metadata_header is None:
+            frontmatter = f"{frontmatter.rstrip()}\nmetadata:\n{hint_line.rstrip()}"
+        else:
+            insertion = metadata_header.end()
+            for line in frontmatter[insertion:].splitlines(keepends=True):
+                if line.strip() and not line[0].isspace():
+                    break
+                insertion += len(line)
+            frontmatter = frontmatter[:insertion] + hint_line + frontmatter[insertion:]
+    skill_path.write_text(f"---\n{frontmatter}\n---{match.group('rest')}", encoding="utf-8")
 
 
 def write_selection_manifest(output: Path, source_spec: SkillSource) -> None:
-    records = []
-    for item in source_spec.selection:
-        records.append(
-            {
-                "sourcePath": item.source_path,
-                "publicName": item.public_name,
-                "aliasOf": item.alias_of,
-                "repository": source_spec.repository,
-                "commit": source_spec.commit,
-            }
-        )
+    records = [
+        {
+            "sourcePath": item.source_path,
+            "name": item.name,
+            "repository": source_spec.repository,
+            "commit": source_spec.commit,
+        }
+        for item in source_spec.selection
+    ]
     manifest = {
         "$schema": "https://github.com/averyfreeman/git-bbq/blob/main/schemas/gitbbq/matt-skills-manifest.schema.json",
         "repository": source_spec.repository,
@@ -368,217 +351,6 @@ def write_selection_manifest(output: Path, source_spec: SkillSource) -> None:
     path = output / SELECTION_MANIFEST_FILENAME
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
-
-
-def preserve_case(replacement: str, value: str) -> str:
-    if value[:1].isupper():
-        return replacement.capitalize()
-    return replacement
-
-
-def normalize_us_english(content: str) -> str:
-    for british, american in US_ENGLISH_REPLACEMENTS.items():
-        pattern = re.compile(rf"\b{re.escape(british)}\b", re.IGNORECASE)
-        content = pattern.sub(lambda match: preserve_case(american, match.group(0)), content)
-    return content
-
-
-def sanitize_text(content: str) -> str:
-    content = CLAUDE_FRONTMATTER.sub("", content)
-    for source, replacement in BRANDING_REPLACEMENTS:
-        content = content.replace(source, replacement)
-    content = content.replace("disable-model-invocation: true", "policy.allow_implicit_invocation: false")
-    content = content.replace("disable-model-invocation", "policy.allow_implicit_invocation")
-    return normalize_us_english(content)
-
-
-def rewrite_skill_references(content: str, name_map: dict[str, str]) -> str:
-    for source_name in sorted(name_map, key=len, reverse=True):
-        public_name = name_map[source_name]
-        invocation = re.compile(
-            rf"(?P<prefix>[$/]){re.escape(source_name)}(?![A-Za-z0-9_-])",
-            re.IGNORECASE,
-        )
-        content = invocation.sub(
-            lambda match: match.group("prefix") + public_name,
-            content,
-        )
-        quoted = re.compile(
-            rf"(?P<quote>[`\"']){re.escape(source_name)}(?P=quote)",
-            re.IGNORECASE,
-        )
-        content = quoted.sub(lambda match: match.group("quote") + public_name + match.group("quote"), content)
-    return content
-
-
-def sanitize_skill_directory(skill_directory: Path, name_map: dict[str, str]) -> None:
-    for path in skill_directory.rglob("*"):
-        if not path.is_file() or path.suffix.lower() not in TEXT_SUFFIXES:
-            continue
-        try:
-            content = path.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            continue
-        sanitized = rewrite_skill_references(sanitize_text(content), name_map)
-        if sanitized != content:
-            path.write_text(sanitized, encoding="utf-8")
-
-
-def rewrite_text_file(path: Path, replacements: tuple[tuple[str, str], ...]) -> None:
-    content = path.read_text(encoding="utf-8")
-    for source, replacement in replacements:
-        content = content.replace(source, replacement)
-    path.write_text(content, encoding="utf-8")
-
-
-def set_skill_frontmatter_name(path: Path, public_name: str) -> None:
-    content = path.read_text(encoding="utf-8")
-    updated, count = re.subn(
-        r"(?m)^name:\s*[^\n]+$",
-        f"name: {public_name}",
-        content,
-        count=1,
-    )
-    if count != 1:
-        raise SystemExit(f"skill frontmatter has no name field: {path}")
-    path.write_text(updated, encoding="utf-8")
-
-
-def set_skill_public_metadata(skill_directory: Path, public_name: str) -> None:
-    path = skill_directory / "agents/openai.yaml"
-    if not path.is_file():
-        return
-    content = path.read_text(encoding="utf-8")
-    updated, count = re.subn(
-        r"(?m)^(\s*display_name:\s*).+$",
-        rf'\1"{public_name}"',
-        content,
-        count=1,
-    )
-    if count == 1:
-        path.write_text(updated, encoding="utf-8")
-
-
-def rewrite_curated_skill(relative_path: str, destination: Path, public_name: str) -> None:
-    if relative_path.startswith("skills/"):
-        relative_path = relative_path.removeprefix("skills/")
-    if relative_path == "engineering/ask-matt":
-        template_root = ROOT / "adapters/codex/templates/matt/ask-matt"
-        copy_file(template_root / "SKILL.md", destination / "SKILL.md")
-        copy_file(template_root / "PHASE-BOUNDARIES.md", destination / "PHASE-BOUNDARIES.md")
-
-    if relative_path == "engineering/code-review":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (
-                (
-                    "Runs both reviews in parallel sub-agents and reports them side by side.",
-                    "Runs both reviews in parallel when available, with a sequential or inline fallback, and reports them side by side.",
-                ),
-                (
-                    "Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.",
-                    "Run both axes in parallel sub-agents when available. If parallel orchestration is unavailable, run them sequentially or inline. In every mode, aggregate the same side-by-side report so the Standards and Spec contract is unchanged.",
-                ),
-                (
-                    "The issue tracker should have been provided to you.",
-                    "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
-                ),
-                (
-                    "If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.",
-                    "Use a path the user supplied as the spec source, or an ADR/spec under `docs/`, `specs/`, or `.scratch/`. If nothing is available, report `no spec available` and keep the Spec axis separate from Standards.",
-                ),
-                (
-                    "1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.), fetched via the workflow in `docs/agents/issue-tracker.md`.\n2. A path the user passed as an argument.\n3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.\n4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report \"no spec available\".",
-                    "1. A path the user supplied as the spec source.\n2. An ADR or spec under `docs/`, `specs/`, or `.scratch/` matching the branch or feature.\n3. A relevant locally available commit-message reference.\n4. If nothing is found, report \"no spec available\" and keep the Spec axis separate from Standards.",
-                ),
-                (
-                    "If `docs/agents/issue-tracker.md` is missing, tell the user to run `/setup-matt-pocock-skills`.",
-                    "If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
-                ),
-                (
-                    "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards. Use a path the user supplied as the spec source, or an ADR/spec under `docs/`, `specs/`, or `.scratch/`. If nothing is available, report `no spec available` and keep the Spec axis separate from Standards.",
-                    "Use the spec source available in the repository or supplied by the user. If no spec is available, report that limitation and keep the Spec axis separate from Standards.",
-                ),
-            ),
-        )
-
-    if relative_path == "engineering/codebase-design":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (
-                (
-                    "Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): spin up parallel sub-agents to design the interface several radically different ways, then compare on depth, locality, and seam placement.",
-                    "Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): use parallel sub-agents when available, or run the independent designs sequentially or inline, then compare on depth, locality, and seam placement.",
-                ),
-            ),
-        )
-        rewrite_text_file(
-            destination / "DESIGN-IT-TWICE.md",
-            (
-                (
-                    "When the user wants to explore alternative interfaces for a chosen deepening candidate, use this parallel sub-agent pattern.",
-                    "When the user wants to explore alternative interfaces for a chosen deepening candidate, use parallel sub-agents when available; otherwise run the same independent design briefs sequentially or inline. Preserve the same five-part output for every design.",
-                ),
-                (
-                    "Before spawning sub-agents, write a user-facing explanation of the problem space for the chosen candidate:",
-                    "Before running the alternative designs, write a user-facing explanation of the problem space for the chosen candidate:",
-                ),
-                (
-                    "Show this to the user, then immediately proceed to Step 2. The user reads and thinks while the sub-agents work in parallel.",
-                    "Show this to the user, then immediately proceed to Step 2. Parallel workers may run while the user reads; if the host cannot orchestrate them, run the same briefs sequentially or inline.",
-                ),
-                ("### 2. Spawn sub-agents", "### 2. Run the design alternatives"),
-                (
-                    "Spawn 3+ sub-agents in parallel. Each must produce a **radically different** interface for the deepened module.",
-                    "When parallel orchestration is available, run 3+ sub-agents in parallel. Otherwise run 3+ independent briefs sequentially or inline. Each must produce a **radically different** interface for the deepened module.",
-                ),
-                ("Prompt each sub-agent with a separate technical brief", "Give each design a separate technical brief"),
-                ("Each sub-agent outputs:", "Each design outputs:"),
-            ),
-        )
-
-    if relative_path == "productivity/grilling":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (
-                (
-                    "Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.",
-                    "Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent when the host provides one. If sub-agent orchestration is unavailable, perform the same bounded fact-finding inline or sequentially; never ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the result; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.",
-                ),
-            ),
-        )
-
-    if relative_path == "engineering/diagnosing-bugs":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (("`/improve-codebase-architecture`", "a later architecture review"),),
-        )
-
-    if relative_path == "engineering/research":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (
-                (
-                    "Spin up a **background agent** to do the research, so you keep working while it reads.",
-                    "Run the research in a background agent when the host provides one. If background orchestration is unavailable, run the same work inline or sequentially. In every mode, preserve the same single cited Markdown artifact contract.",
-                ),
-                ("Its job:", "The research worker's job:"),
-            ),
-        )
-
-    if relative_path == "engineering/prototype":
-        rewrite_text_file(
-            destination / "SKILL.md",
-            (
-                (
-                    "A logic demo is a single HTML file the user double-clicks.",
-                    "A logic demo is a single HTML file the user can open directly. When `lavish-axi` is available, use it for annotation and foreground feedback polling; direct-open remains the fallback.",
-                ),
-            ),
-        )
-
-    set_skill_frontmatter_name(destination / "SKILL.md", public_name)
-    set_skill_public_metadata(destination, public_name)
 
 
 def compatibility_manifest(portable: dict) -> dict:
@@ -599,6 +371,11 @@ def compatibility_manifest(portable: dict) -> dict:
     }
     compatibility["skills"] = "./skills/"
     compatibility["interface"] = extension["interface"]
+    onboarding_skill = extension.get("onboardingSkill")
+    if onboarding_skill:
+        compatibility["extensions"] = {
+            "com.openai": {"onboardingSkill": onboarding_skill}
+        }
     return compatibility
 
 

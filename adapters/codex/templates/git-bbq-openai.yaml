@@ -1,6 +1,6 @@
 interface:
   display_name: "Git BBQ"
-  short_description: "Scaffold an agent-ready repository"
+  short_description: "Agent workflows for Git repos"
   default_prompt: "Scaffold the repository, create durable architecture records, and review Git workflow policy."
 
 policy:

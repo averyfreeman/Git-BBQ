@@ -6,7 +6,8 @@ Git BBQ-operated service.
 
 The Codex host controls prompts, workspace access, and any network activity
 performed by the host. A package build may fetch the pinned Git BBQ-maintained
-Matt skills derivative so those skills can be included in the local artifact.
+upstream Matt Pocock skills repository so selected skills can be included in
+the local artifact.
 Runtime hooks
 read only the event payload and workspace files needed to validate the Git BBQ
 project contract.

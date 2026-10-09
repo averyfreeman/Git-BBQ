@@ -1,23 +1,39 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/averyfreeman/git-bbq/blob/main/schemas/gitbbq/matt-skills-manifest.schema.json",
-  "title": "Git BBQ packaged Matt skills manifest",
+  "title": "Git BBQ packaged upstream skills manifest",
   "type": "object",
   "required": ["repository", "commit", "skills"],
   "properties": {
-    "repository": { "type": "string", "format": "uri" },
-    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "repository": {
+      "const": "https://github.com/mattpocock/skills.git"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
     "skills": {
       "type": "array",
+      "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["sourcePath", "publicName", "aliasOf", "repository", "commit"],
+        "required": ["sourcePath", "name", "repository", "commit"],
         "properties": {
-          "sourcePath": { "type": "string", "pattern": "^skills/[^/]+/.+" },
-          "publicName": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
-          "aliasOf": { "type": ["string", "null"] },
-          "repository": { "type": "string", "format": "uri" },
-          "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          "sourcePath": {
+            "type": "string",
+            "pattern": "^skills/[^/]+/[^/]+$"
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "repository": {
+            "const": "https://github.com/mattpocock/skills.git"
+          },
+          "commit": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          }
         },
         "additionalProperties": false
       }

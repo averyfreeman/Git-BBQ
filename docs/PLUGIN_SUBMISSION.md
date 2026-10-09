@@ -8,7 +8,7 @@ publication.
 
 - Plugin ID: git-bbq
 - Display name: Git BBQ
-- Version: 0.3.0
+- Version: 0.4.0
 - Category: Developer Tools
 - Repository: https://github.com/averyfreeman/git-bbq
 - Capabilities: Read and Write
@@ -20,11 +20,21 @@ projects validated architecture documents, and plans guarded Git operations.
 The bundled hooks are deterministic and fail closed when the workspace does
 not contain a valid Git BBQ project contract.
 
-The packaged skill set contains the 16-entry selection recorded in the generated
-Matt skills manifest. Skills are imported from the maintained derivative pin,
-provider-specific references are removed or rewritten for Codex, canonical
-public names are applied at packaging time, and copied prose is normalized to
-US English.
+The packaged skill set contains all stable skills from the upstream
+`engineering` and `productivity` categories recorded in the generated Matt
+skills manifest. Skills retain their upstream names and source text. The build
+adapts the non-standard `disable-model-invocation` field into Codex's adjacent
+invocation policy so packaged `SKILL.md` frontmatter follows Agent Skills.
+
+The package contains lifecycle hooks for local Codex use. OpenAI's current
+plugin guidance says plugins containing lifecycle hooks are not eligible for
+the public plugin directory, so this package is not ready for public
+submission while those hooks remain. Public submission is outside the current
+release scope.
+
+The portable and Codex compatibility manifests point to the bundled upstream
+`setup-matt-pocock-skills` skill as the plugin onboarding skill. The package
+validator checks that both declarations match and that the skill is present.
 
 ## Starter prompts
 
@@ -34,13 +44,17 @@ US English.
 
 ## Positive tests
 
-1. Install the local package in Codex CLI and verify git-bbq version.
+1. Install the local package in an isolated Codex CLI home and verify git-bbq
+   version and upstream skill discovery.
 2. Run `git-bbq help hooks` and verify event syntax plus `/hooks` trust guidance.
-3. Start a new thread in Codex and invoke the Git BBQ skill.
-4. Run git-bbq assess against an existing repository and confirm it is
+3. Install the plugin in a fresh Codex profile and verify the setup skill is
+   offered as onboarding; complete setup in a fixture repository and confirm
+   its tracker and domain-document choices are preserved.
+4. Start a new thread in Codex and invoke a Git BBQ skill.
+5. Run git-bbq assess against an existing repository and confirm it is
    read-only.
-5. Run git-bbq project after creating an ADR and verify the projections.
-6. Send valid JSON to each of the five hooks and verify structured responses.
+6. Run git-bbq project after creating an ADR and verify the projections.
+7. Send valid JSON to each of the five hooks and verify structured responses.
 
 ## Negative tests
 
@@ -54,8 +68,9 @@ US English.
 
 - [ ] The package validator passes for every target artifact.
 - [ ] The official plugin validator passes against the compatibility manifest.
-- [ ] The package contains only the curated skill allowlist.
-- [ ] Branding and language scans find no provider-specific or non-US terms.
+- [ ] The package contains exactly the stable upstream selection.
+- [ ] Skill names, metadata, and immediate-child discovery paths pass the Agent
+  Skills and Agent Plugins checks.
 - [ ] Legal URLs resolve to the repository privacy and terms pages.
 - [ ] Verified publisher identity and selected release regions are ready in the
   submission portal.

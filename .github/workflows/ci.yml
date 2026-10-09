@@ -52,17 +52,3 @@ jobs:
           test -x .tmp/git-bbq-plugin/runtime/git-bbq/git-bbq
           test -x .tmp/git-bbq-plugin/runtime/bin/x86_64-linux/git-bbq
           test "$(python3 -c 'import json; print(len(json.load(open(".tmp/git-bbq-plugin/hooks/hooks.json"))["hooks"]))')" = "5"
-
-  sonarqube:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: true
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v8.2.2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          # SONAR_HOST_URL: ${{ vars.SONAR_HOST_URL }} # Required if using SonarQube Server instead of SonarQube Cloud

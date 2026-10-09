@@ -1,7 +1,0 @@
-organization=averyfreeman
-projectKey=a98b03782628021424c10eb3ffa6e6a28af40aba
-serverUrl=https://sonarcloud.io
-serverVersion=8.0.0.108320
-dashboardUrl=https://sonarcloud.io/dashboard?id=a98b03782628021424c10eb3ffa6e6a28af40aba
-ceTaskId=AaDlrPphkiisMh1txyxS
-ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AaDlrPphkiisMh1txyxS

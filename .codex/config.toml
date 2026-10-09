@@ -3,7 +3,3 @@ enabled = true
 
 [features]
 hooks = true
-
-[mcp_servers.sonarqube]
-command = "sonar"
-args = [ "run", "mcp" ]

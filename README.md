@@ -147,11 +147,14 @@ python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq
 ```
 
 The package contains exactly five lifecycle hooks and embeds the `git-bbq`
-runtime for the four supported targets. Matt skills are copied from the exact
-`.agents/skills` derivative pin, selected by `git-bbq-curation.json`, renamed to
-their canonical v0.3 public names, rewritten for Codex, and normalized to US
-English. The package records the selection in
-`skills/matt-skills-manifest.json`.
+runtime for the four supported targets. Selected stable engineering and
+productivity skills are exported from the exact upstream commit pinned by the
+`.agents/skills` submodule, then copied under their upstream names. Root-owned
+`git-bbq-curation.json` selects the package surface. Skill instructions and
+support files remain upstream content. The build maps the non-standard
+`disable-model-invocation` field to its equivalent Codex policy and carries any
+non-standard `argument-hint` into namespaced standard metadata. The package
+records each upstream path and commit in `skills/matt-skills-manifest.json`.
 
 To make it available in Codex CLI and ChatGPT desktop:
 

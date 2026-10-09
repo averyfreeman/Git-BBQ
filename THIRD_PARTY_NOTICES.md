@@ -7,12 +7,12 @@ SPDX-License-Identifier: MIT
 
 The Windows executable bundles the runtime dependencies below. Copyright remains with each package's authors. Complete license texts are provided by their respective distributions and must be included in release archives when required.
 
-The plugin also bundles selected Matt Pocock skills from the Git BBQ-maintained
-derivative at
-https://github.com/averyfreeman/git-bbq-matt-skills.git, commit
-64fb7a440ff4a5e0b3d82680b2d73c2b93e1f2fa (`v0.2.0`). The derivative preserves
-the upstream source paths and attribution; those skills remain under their
-upstream license and notices.
+The plugin also bundles selected Matt Pocock skills from
+https://github.com/mattpocock/skills.git, commit
+b0618bc436ad893b3c5e84e55fba86586d34a404. The upstream repository's MIT license
+is copied into the plugin package at `licenses/mattpocock-skills/LICENSE`.
+Packaged skill names and instructions remain upstream; the build adapts only
+provider-specific frontmatter while preserving the relevant Codex policy.
 
 | Package | Version | Declared license | Project URL |
 | --- | --- | --- | --- |

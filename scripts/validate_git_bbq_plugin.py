@@ -11,42 +11,10 @@ from pathlib import Path
 
 REQUIRED_EVENTS = {"UserPromptSubmit", "PreToolUse", "PostToolUse", "PostCompact", "Stop"}
 SELECTION_MANIFEST = Path("skills/matt-skills-manifest.json")
-PUBLIC_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-_AI = bytes((97, 105))
-_OLD_BRANDING_PATTERN = b"|".join(
-    (
-        _AI + rb"[-_ ]" + b"software" + rb"[-_ ]" + b"architect",
-        _AI + rb"[-_ ]" + b"architect",
-        _AI + b"architect",
-        _AI + b"-software-architect",
-    )
-)
-OLD_BRANDING = re.compile(_OLD_BRANDING_PATTERN, re.IGNORECASE)
-FORBIDDEN_PROVIDER_BRANDING = re.compile(rb"\b(?:claude|anthropic)\b", re.IGNORECASE)
-FORBIDDEN_CLAUDE_METADATA = re.compile(rb"disable-model-invocation", re.IGNORECASE)
-BRITISH_SPELLINGS = re.compile(
-    rb"\b(?:behaviour|behaviours|colour|colours|centre|centres|labelled|labelling|modelling|"
-    rb"optimise|optimised|optimising|prioritise|prioritised|prioritising|recognised|"
-    rb"summarise|summarised|summarising|travelling|artefact|artefacts|authorise|"
-    rb"authorised|authorising|minimise|minimised|minimising|organisation|organisations|"
-    rb"programme|programmes|favour|favours|licence)\b",
-    re.IGNORECASE,
-)
-TEXT_SUFFIXES = {
-    ".cjs",
-    ".go",
-    ".html",
-    ".js",
-    ".json",
-    ".md",
-    ".mjs",
-    ".py",
-    ".sh",
-    ".txt",
-    ".ts",
-    ".yaml",
-    ".yml",
-}
+ONBOARDING_SKILL = "./skills/setup-matt-pocock-skills/SKILL.md"
+SKILLS_REPOSITORY = "https://github.com/mattpocock/skills.git"
+SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+ALLOWED_FRONTMATTER = {"name", "description", "license", "compatibility", "metadata", "allowed-tools"}
 
 
 def load_json(path: Path) -> dict:
@@ -64,46 +32,85 @@ def load_selection_manifest(package: Path) -> tuple[dict, list[dict]]:
     repository = manifest.get("repository")
     commit = manifest.get("commit")
     records = manifest.get("skills")
-    if not isinstance(repository, str) or not repository:
-        raise ValueError("packaged Matt skills manifest is missing repository")
+    if repository != SKILLS_REPOSITORY:
+        raise ValueError("packaged skills must come directly from mattpocock/skills")
     if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("packaged Matt skills manifest has an invalid commit")
     if not isinstance(records, list) or not records:
         raise ValueError("packaged Matt skills manifest must contain skills")
-    public_names: set[str] = set()
+
+    names: set[str] = set()
     source_paths: set[str] = set()
     for record in records:
         if not isinstance(record, dict):
             raise ValueError("packaged Matt skills manifest entries must be objects")
-        required = {"sourcePath", "publicName", "aliasOf", "repository", "commit"}
-        if not required.issubset(record):
+        if not {"sourcePath", "name", "repository", "commit"}.issubset(record):
             raise ValueError(f"packaged Matt skills manifest entry is incomplete: {record!r}")
         if record["repository"] != repository or record["commit"] != commit:
-            raise ValueError("packaged Matt skills manifest entries disagree with its source pin")
+            raise ValueError("packaged Matt skills entries disagree with the source pin")
         source_path = record["sourcePath"]
         if (
             not isinstance(source_path, str)
             or not source_path.startswith("skills/")
             or Path(source_path).is_absolute()
             or ".." in Path(source_path).parts
+            or Path(source_path).as_posix() != source_path
+            or len(Path(source_path).parts) < 3
         ):
             raise ValueError(f"packaged Matt skills manifest has an invalid source path: {source_path!r}")
         if source_path in source_paths:
             raise ValueError(f"packaged Matt skills manifest has a duplicate source path: {source_path}")
         source_paths.add(source_path)
-        public_name = record["publicName"]
-        if not isinstance(public_name, str) or not PUBLIC_NAME_PATTERN.fullmatch(public_name):
-            raise ValueError(f"packaged Matt skills manifest has an invalid public name: {public_name!r}")
-        if public_name in public_names:
-            raise ValueError(f"packaged Matt skills manifest has duplicate public name: {public_name}")
-        public_names.add(public_name)
-    for record in records:
-        alias_of = record["aliasOf"]
-        if alias_of is not None and (not isinstance(alias_of, str) or alias_of not in public_names):
-            raise ValueError(
-                f"packaged Matt skills manifest alias targets a non-packaged skill: {alias_of}"
-            )
+        name = record["name"]
+        if not isinstance(name, str) or not SKILL_NAME_PATTERN.fullmatch(name):
+            raise ValueError(f"packaged Matt skills manifest has an invalid name: {name!r}")
+        if name != Path(source_path).name:
+            raise ValueError(f"packaged skill name does not preserve its upstream path: {source_path}")
+        if name in names:
+            raise ValueError(f"packaged Matt skills manifest has a duplicate name: {name}")
+        names.add(name)
     return manifest, records
+
+
+def parse_skill_frontmatter(path: Path) -> tuple[dict[str, str], list[str]]:
+    errors: list[str] = []
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        return {}, [f"could not read skill: {path}: {exc}"]
+    match = re.match(r"\A---\r?\n(?P<frontmatter>.*?)\r?\n---(?:\r?\n|\Z)", text, re.DOTALL)
+    if match is None:
+        return {}, [f"skill has invalid YAML frontmatter: {path}"]
+
+    fields: dict[str, str] = {}
+    lines = match.group("frontmatter").splitlines()
+    for line in lines:
+        if not line or line[0].isspace() or line.lstrip().startswith("#"):
+            continue
+        field = re.match(r"^([A-Za-z0-9_-]+):(?:\s*(.*))?$", line)
+        if field is None:
+            errors.append(f"skill has an invalid top-level frontmatter line: {path}: {line}")
+            continue
+        key = field.group(1)
+        value = (field.group(2) or "").strip()
+        if key not in ALLOWED_FRONTMATTER:
+            errors.append(f"skill uses a nonstandard frontmatter field {key!r}: {path}")
+        if key in fields:
+            errors.append(f"skill repeats frontmatter field {key!r}: {path}")
+        fields[key] = value
+
+    description = fields.get("description", "")
+    if description in {">", "|", ">-", "|-", ">+", "|+"}:
+        description = " ".join(line.strip() for line in lines[lines.index(f"description: {description}") + 1:] if line.strip())
+    description = description.strip("\"'")
+    fields["description"] = description
+    if not fields.get("name"):
+        errors.append(f"skill is missing required name frontmatter: {path}")
+    if not fields.get("description"):
+        errors.append(f"skill is missing required description frontmatter: {path}")
+    if len(description) > 1024:
+        errors.append(f"skill description exceeds 1024 characters: {path}")
+    return fields, errors
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -111,25 +118,12 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
-def warn(condition: bool, message: str, warnings: list[str]) -> None:
-    if condition:
-        warnings.append(message)
-
-
-def validate(
-    package: Path,
-    target: str | None,
-    warnings: list[str] | None = None,
-) -> list[str]:
+def validate(package: Path, target: str | None, warnings: list[str] | None = None) -> list[str]:
+    del warnings  # The validator reports conformance errors; upstream wording remains untouched.
     errors: list[str] = []
-    if warnings is None:
-        warnings = []
-    portable_path = package / "plugin.json"
-    compatibility_path = package / ".codex-plugin/plugin.json"
-    hooks_path = package / "hooks/hooks.json"
-    portable = load_json(portable_path)
-    compatibility = load_json(compatibility_path)
-    hooks = load_json(hooks_path)
+    portable = load_json(package / "plugin.json")
+    compatibility = load_json(package / ".codex-plugin/plugin.json")
+    hooks = load_json(package / "hooks/hooks.json")
     _selection_manifest, selection = load_selection_manifest(package)
 
     require(portable.get("name") == "git-bbq", "portable name must be git-bbq", errors)
@@ -140,64 +134,63 @@ def validate(
     )
     openai = portable.get("extensions", {}).get("com.openai", {})
     require(openai.get("hooks") == "./hooks/hooks.json", "OpenAI hooks path is incorrect", errors)
+    onboarding_skill = openai.get("onboardingSkill")
+    require(
+        onboarding_skill == ONBOARDING_SKILL,
+        "OpenAI onboardingSkill must point to the bundled setup-matt-pocock-skills skill",
+        errors,
+    )
+    require(
+        (package / ONBOARDING_SKILL).is_file(),
+        "OpenAI onboardingSkill does not resolve to a packaged skill",
+        errors,
+    )
     interface = openai.get("interface", {})
     for field in ("displayName", "shortDescription", "longDescription", "developerName", "category"):
         require(bool(interface.get(field)), f"OpenAI interface field is missing: {field}", errors)
+    short_description = interface.get("shortDescription", "")
+    require(len(short_description) <= 30, "OpenAI shortDescription exceeds 30 characters", errors)
+    prompts = interface.get("defaultPrompt", [])
+    require(isinstance(prompts, list) and len(prompts) <= 3, "OpenAI defaultPrompt must have at most three entries", errors)
     require(compatibility.get("name") == "git-bbq", "compatibility name must be git-bbq", errors)
     require("hooks" not in compatibility, "compatibility manifest must use hook autodiscovery", errors)
-    require("extensions" not in compatibility, "compatibility manifest must not define extensions", errors)
+    compatibility_openai = compatibility.get("extensions", {}).get("com.openai", {})
+    require(
+        compatibility_openai.get("onboardingSkill") == onboarding_skill,
+        "Codex compatibility manifest must declare the same onboardingSkill",
+        errors,
+    )
+    require(
+        "hooks" not in compatibility_openai,
+        "compatibility manifest must use hook autodiscovery",
+        errors,
+    )
     require(bool(compatibility.get("author", {}).get("name")), "compatibility author is missing", errors)
     require(bool(compatibility.get("interface", {}).get("developerName")), "compatibility developerName is missing", errors)
 
     hook_events = set(hooks.get("hooks", {}))
     require(hook_events == REQUIRED_EVENTS, "hook events must be exactly the five Git BBQ events", errors)
     require((package / "assets/logo.svg").is_file(), "logo asset is missing", errors)
+    require((package / "licenses/mattpocock-skills/LICENSE").is_file(), "upstream skill license is missing", errors)
     require((package / "runtime/git-bbq/git-bbq").is_file(), "POSIX launcher is missing", errors)
     require((package / "runtime/git-bbq/git-bbq.cmd").is_file(), "Windows launcher is missing", errors)
 
     skills_root = package / "skills"
     skill_dirs = [path for path in skills_root.iterdir() if path.is_dir()] if skills_root.is_dir() else []
-    require(skill_dirs, "no direct skill directories were packaged", errors)
+    expected_skills = {"git-bbq", *(record["name"] for record in selection)}
     actual_skills = {path.name for path in skill_dirs}
-    expected_skills = {"git-bbq"} | {
-        f"mattpocock-{record['publicName']}" for record in selection
-    }
-    require(actual_skills == expected_skills, "packaged skills do not match the curated selection manifest", errors)
-    require(len(selection) == 16, "packaged Matt skills must contain exactly 16 selected entries", errors)
+    require(actual_skills == expected_skills, "packaged skills do not match the root curation selection", errors)
     for skill_dir in skill_dirs:
-        require((skill_dir / "SKILL.md").is_file(), f"skill is missing SKILL.md: {skill_dir.name}", errors)
-
-    source_names = {
-        Path(record["sourcePath"]).name: record["publicName"]
-        for record in selection
-    }
-    for record in selection:
-        directory = skills_root / f"mattpocock-{record['publicName']}"
-        skill_path = directory / "SKILL.md"
-        try:
-            skill_text = skill_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            errors.append(f"could not read packaged skill frontmatter {skill_path}: {exc}")
+        skill_path = skill_dir / "SKILL.md"
+        require(skill_path.is_file(), f"skill is missing SKILL.md: {skill_dir.name}", errors)
+        if not skill_path.is_file():
             continue
-        frontmatter = re.search(r"(?m)^name:\s*([^\n]+)$", skill_text)
-        require(frontmatter is not None, f"skill frontmatter has no name: {directory.name}", errors)
-        if frontmatter:
-            require(
-                frontmatter.group(1).strip() == record["publicName"],
-                f"skill frontmatter name is not canonical: {directory.name}",
-                errors,
-            )
-        for source_name, public_name in source_names.items():
-            if source_name == public_name:
-                continue
-            old_reference = re.compile(
-                rf"(?:\$|/){re.escape(source_name)}(?:\b|`|\")",
-                re.IGNORECASE,
-            )
-            if old_reference.search(skill_text):
-                errors.append(
-                    f"obsolete cross-skill reference {source_name!r} found in {directory.name}"
-                )
+        fields, frontmatter_errors = parse_skill_frontmatter(skill_path)
+        errors.extend(frontmatter_errors)
+        name = fields.get("name", "").strip("\"'")
+        require(name == skill_dir.name, f"skill name must match its parent directory: {skill_dir.name}", errors)
+        require(len(name) <= 64, f"skill name exceeds 64 characters: {skill_dir.name}", errors)
+        require("--" not in name, f"skill name contains consecutive hyphens: {skill_dir.name}", errors)
 
     runtime_root = package / "runtime/bin"
     runtime_targets = [path for path in runtime_root.iterdir() if path.is_dir()] if runtime_root.is_dir() else []
@@ -209,34 +202,6 @@ def validate(
         for expected in ("aarch64-darwin", "x86_64-darwin", "x86_64-linux", "windows-x86_64"):
             executable = "git-bbq.exe" if expected == "windows-x86_64" else "git-bbq"
             require((runtime_root / expected / executable).is_file(), f"runtime target is missing: {expected}", errors)
-
-    for path in package.rglob("*"):
-        if path.is_file():
-            try:
-                relative = path.relative_to(package)
-                if any(term in str(relative).lower() for term in ("claude", "anthropic")):
-                    errors.append(f"obsolete provider path found in package: {relative}")
-                content = path.read_bytes()
-                warn(
-                    bool(OLD_BRANDING.search(content)),
-                    f"obsolete branding found in package file: {relative}",
-                    warnings,
-                )
-                warn(
-                    bool(FORBIDDEN_PROVIDER_BRANDING.search(content)),
-                    f"provider-specific branding found in package file: {relative}",
-                    warnings,
-                )
-                if FORBIDDEN_CLAUDE_METADATA.search(content):
-                    errors.append(f"legacy invocation metadata found in package file: {relative}")
-                if path.suffix.lower() in TEXT_SUFFIXES:
-                    warn(
-                        bool(BRITISH_SPELLINGS.search(content)),
-                        f"non-US spelling found in package file: {relative}",
-                        warnings,
-                    )
-            except OSError as exc:
-                errors.append(f"could not read package file {path}: {exc}")
     return errors
 
 
@@ -249,20 +214,15 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        warnings: list[str] = []
-        errors = validate(args.package.resolve(), args.target, warnings)
+        errors = validate(args.package.resolve(), args.target)
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    for warning in warnings:
-        print(f"warning: {warning}", file=sys.stderr)
     if errors:
         for error in errors:
             print(f"error: {error}", file=sys.stderr)
         return 1
     print(f"Git BBQ plugin package is valid: {args.package}")
-    if warnings:
-        print(f"Git BBQ plugin package has {len(warnings)} warning(s)", file=sys.stderr)
     return 0
 
 

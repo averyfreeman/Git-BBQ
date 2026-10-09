@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestDefaultManifestUsesGitBBQSkillsDerivative(t *testing.T) {
+func TestDefaultManifestPinsUpstreamMattSkills(t *testing.T) {
 	manifest := DefaultManifest("Example")
 	if manifest.Matt.Repository != MattRepository || manifest.Matt.Commit != MattCommit || manifest.Matt.Path != MattDependencyPath {
 		t.Fatalf("manifest Matt dependency = %#v", manifest.Matt)

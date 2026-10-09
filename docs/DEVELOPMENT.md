@@ -11,8 +11,9 @@
 - `scripts/validate_git_bbq_plugin.py` validates the generated package,
   curated skill layout, hooks, runtimes, assets, branding, and language.
 
-Git BBQ is self-contained. New behavior belongs in this repository and must
-not depend on an unrelated source tree.
+The plugin packages selected skills from its pinned upstream Matt Pocock
+submodule. Package selection and adapter code live here; upstream skill
+content does not.
 
 ## Checks
 
@@ -31,19 +32,29 @@ PYTHONPATH=scripts python3 -m unittest scripts/test_build_git_bbq_plugin.py
 
 Package changes follow this order:
 
-1. Resolve the exact derivative commit recorded in the build script and verify
-   the checked-in `.agents/skills` submodule.
-2. Parse `git-bbq-curation.json` and require all 38 source paths to be present.
-3. Copy only `keep` and `alias` entries, using their manifest `publicName`.
-4. Rewrite provider-specific features and retained cross-skill references for
-   Codex while preserving each report or artifact contract.
-5. Normalize copied text to US English, build, and validate the Codex package.
+1. Read the pinned upstream repository and commit from
+   `git-bbq-curation.json`; verify `.agents/skills` points to that clean
+   upstream checkout.
+2. Require the curation selection to match every skill in the stable
+   `engineering` and `productivity` categories at that commit.
+3. Export selected skill directories from the pinned Git tree and package them
+   under their upstream directory names.
+4. Preserve upstream instructions and support files. The `SKILL.md` metadata
+   adapter maps `disable-model-invocation: true` to adjacent Codex policy
+   `allow_implicit_invocation: false`, and carries `argument-hint` into
+   namespaced standard metadata.
+5. Build both plugin manifests, declare the bundled setup skill as OpenAI
+   onboarding in both manifests, and validate Agent Skills fields, discovery
+   paths, upstream names, hooks, runtimes, and OpenAI metadata constraints.
 
-The package build accepts the `.agents/skills` checkout only when its Git `HEAD`
-exactly matches the pinned derivative commit; otherwise it temporarily clones
-that same derivative repository at the pin. It never falls back to the upstream
-Matt repository. The generated `skills/matt-skills-manifest.json` records every
-packaged source path, public name, alias, repository, and commit.
+The package build accepts the `.agents/skills` checkout only when its Git
+`HEAD`, origin, and clean working tree match the upstream pin. It exports the
+selected files from that Git commit, so local ignored files cannot enter the
+package. If the submodule is absent, the builder temporarily clones the same
+upstream repository at the exact pin. The generated
+`skills/matt-skills-manifest.json` records each packaged source path, upstream
+name, repository, and commit. Update the curation manifest and submodule pin
+together when adopting another upstream revision.
 The optional `lavish-axi` CLI may be used to review HTML architecture or
 prototype artifacts, but it is not a package dependency.
 
