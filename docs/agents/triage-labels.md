@@ -1,6 +1,8 @@
 # Triage labels
 
 Use the default Matt Pocock triage roles and identical GitHub label names.
+This vocabulary is approved for Git-BBQ: setup uses it as recorded, and the
+mapping changes only when the user explicitly requests a different vocabulary.
 
 | Role | GitHub label | Meaning |
 | --- | --- | --- |
