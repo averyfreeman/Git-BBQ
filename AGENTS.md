@@ -7,8 +7,8 @@ Specs and tickets live in this repository's GitHub Issues. See
 
 ### Triage labels
 
-Use the default Matt Pocock triage labels recorded for this repository. See
-`docs/agents/triage-labels.md`.
+Apply the approved default Matt Pocock triage labels during setup without
+reconfirmation. See `docs/agents/triage-labels.md` for the names and policy.
 
 ### Domain docs
 
