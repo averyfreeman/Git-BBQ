@@ -11,7 +11,7 @@ const (
 	// ToolName is the executable name used by Git BBQ.
 	ToolName = "git-bbq"
 	// ToolVersion is the current Git BBQ CLI version.
-	ToolVersion = "0.4.1"
+	ToolVersion = "0.4.2"
 	// SchemaVersion is the version shared by Git BBQ project contracts.
 	SchemaVersion = "1.0.0"
 	// ManifestFilename is the project-relative path of the Git BBQ manifest.

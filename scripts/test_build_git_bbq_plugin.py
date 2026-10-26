@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from build_git_bbq_plugin import (
+    DEFAULT_VERSION,
     SKILLS_REPOSITORY,
     CuratedSkill,
     SkillSource,
@@ -18,6 +19,22 @@ from validate_git_bbq_plugin import validate
 
 
 COMMIT = "a" * 40
+RELEASE_VERSION = "0.4.2"
+
+
+class ReleaseVersionConsistencyTests(unittest.TestCase):
+    def test_cli_package_builder_and_release_handoff_share_one_version(self):
+        repository = Path(__file__).resolve().parents[1]
+        model = (repository / "internal/gitbbq/model.go").read_text(encoding="utf-8")
+        template = json.loads(
+            (repository / "adapters/codex/templates/git-bbq-plugin.json").read_text(encoding="utf-8")
+        )
+        submission = (repository / "docs/PLUGIN_SUBMISSION.md").read_text(encoding="utf-8")
+
+        self.assertIn(f'ToolVersion = "{RELEASE_VERSION}"', model)
+        self.assertEqual(DEFAULT_VERSION, RELEASE_VERSION)
+        self.assertEqual(template["version"], RELEASE_VERSION)
+        self.assertIn(f"- Version: {RELEASE_VERSION}", submission)
 
 
 class CurationValidationTests(unittest.TestCase):
@@ -186,7 +203,7 @@ class PackageValidationTests(unittest.TestCase):
         manifest = {
             "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
             "name": "git-bbq",
-            "version": "0.4.1",
+            "version": "0.4.2",
             "description": "Git BBQ",
             "author": {"name": "Git BBQ"},
             "extensions": {

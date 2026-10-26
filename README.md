@@ -1,6 +1,6 @@
 # Git BBQ
 
-![Git BBQ grill cartoon](assets/grill-cartoon-illistration_740x740.jpg)
+![Git BBQ grill cartoon](assets/grill-cartoon-illistration_740x740.svg)
 
 Git BBQ carries an agent's architecture work from the conversation into the
 repository. It builds on Matt Pocock's upstream engineering skills, including
