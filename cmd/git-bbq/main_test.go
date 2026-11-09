@@ -88,41 +88,6 @@ func TestRunGithabitsPlanBuildsRemoteProvisionPlan(t *testing.T) {
 	}
 }
 
-func TestRunMigrateReportsReadOnlyAssessment(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".adr-scaffold.yaml"), []byte("version: 1\nlanguage: go\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := runMigrate([]string{"--json", root}); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestRunMigrateAppliesOnlyWithApproval(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".adr-scaffold.yaml"), []byte("version: 1\nlanguage: go\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(root, ".ai-architect"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".ai-architect", "project-context.md"), []byte("---\nlanguage: go\nmotivation:\n  problem: Keep migration explicit.\n---\n\n# Context\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, gitbbq.GitHabitsFilename), []byte("version: 1\nbranch: main\nversioning: semver\ninitial_tag: v0.1.0\ncommit_style: conventional-commits\ninit: false\ncommit: false\ntag: false\npush: false\ncreate_remote: false\nremote:\n  visibility: private\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := runMigrate([]string{"--approve", "--force", "--json", root}); err != nil {
-		t.Fatal(err)
-	}
-	if err := gitbbq.ValidateProject(root); err != nil {
-		t.Fatalf("approved migration produced invalid project: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".gitbbq", "migration", "legacy", gitbbq.GitHabitsFilename)); err != nil {
-		t.Fatalf("legacy Git habits archive missing: %v", err)
-	}
-}
-
 func TestRunUninstallDefaultsToAssessmentAndRequiresApproval(t *testing.T) {
 	root := t.TempDir()
 	if _, err := gitbbq.ScaffoldProject(root, gitbbq.ScaffoldOptions{ProjectName: "Example", Problem: "Remove only owned files.", Languages: []string{"go"}}); err != nil {
@@ -139,5 +104,56 @@ func TestRunUninstallDefaultsToAssessmentAndRequiresApproval(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, gitbbq.OwnershipFilename)); !os.IsNotExist(err) {
 		t.Fatalf("approved uninstall left ownership ledger or returned unexpected error: %v", err)
+	}
+}
+
+func TestHelpTopicsCoverEveryPublicCommand(t *testing.T) {
+	for _, topic := range helpTopicOrder {
+		text, err := helpText(topic)
+		if err != nil {
+			t.Fatalf("help topic %q: %v", topic, err)
+		}
+		if !strings.Contains(text, "git-bbq") {
+			t.Fatalf("help topic %q omitted command name: %q", topic, text)
+		}
+	}
+	text, err := helpText("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "git-bbq help [command [subcommand]]") {
+		t.Fatalf("top-level help omitted help syntax: %q", text)
+	}
+}
+
+func TestHelpHooksExplainsCodexTrust(t *testing.T) {
+	text, err := helpText("hooks")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, expected := range []string{"UserPromptSubmit", "PreToolUse", "JSON", "stdin", "/hooks", "re-review"} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("hook help omitted %q: %q", expected, text)
+		}
+	}
+}
+
+func TestHelpAliasesResolveNestedTopics(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{args: []string{"help", "hooks"}, want: "hooks"},
+		{args: []string{"help", "hook"}, want: "hooks"},
+		{args: []string{"adr", "new", "--help"}, want: "adr new"},
+		{args: []string{"githabits", "execute", "--help"}, want: "githabits execute"},
+	}
+	for _, test := range cases {
+		if got := helpTopicForArgs(test.args); got != test.want {
+			t.Fatalf("helpTopicForArgs(%v) = %q, want %q", test.args, got, test.want)
+		}
+	}
+	if _, err := helpText("missing"); err == nil || !strings.Contains(err.Error(), "git-bbq help") {
+		t.Fatalf("unknown help topic error = %v", err)
 	}
 }

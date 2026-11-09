@@ -28,10 +28,12 @@ go run ./cmd/git-bbq adr new \
 
 go run ./cmd/git-bbq project ./my-project
 go run ./cmd/git-bbq validate ./my-project
+
+git-bbq help hooks
 ```
 
 Use `git-bbq assess` before changing an existing repository. Persistence requires
-the separate `git-bbq apply --approve` or migration approval command.
+the separate `git-bbq apply --approve` command.
 
 ## Project contract
 
@@ -49,18 +51,35 @@ The detailed contract is in [docs/GIT_BBQ.md](docs/GIT_BBQ.md).
 
 ## Codex plugin
 
-Build the standalone Codex package, including its short-lived Go runtime:
+Build the standalone Codex package, including its portable manifest,
+compatibility manifest, launchers, and short-lived Go runtimes:
 
 ```sh
 python3 scripts/build_git_bbq_plugin.py \
-  --output .tmp/git-bbq-plugin \
-  --target x86_64-linux \
+  --output plugins/git-bbq \
+  --target all \
   --force
+python3 scripts/validate_git_bbq_plugin.py plugins/git-bbq
 ```
 
 The package contains exactly five lifecycle hooks and embeds the `git-bbq`
-runtime. Matt Pocock skills are copied from a local checkout when available or
-from the pinned upstream commit during a package build.
+runtime for the four supported targets. Matt skills are copied from the exact
+pinned upstream commit, filtered to the ADR, architecture, code, and document
+revision allowlist, rewritten for Codex, and normalized to US English.
+
+To make it available in Codex CLI and ChatGPT desktop:
+
+```sh
+codex plugin marketplace add .
+codex plugin add git-bbq@git-bbq-local
+codex plugin list
+```
+
+Restart the Codex host after rebuilding the package. In Codex CLI, run `/hooks`
+to review and trust the bundled lifecycle definition, then test in a new
+thread. See
+[docs/LOCAL_PLUGIN.md](docs/LOCAL_PLUGIN.md) and
+[docs/PLUGIN_SUBMISSION.md](docs/PLUGIN_SUBMISSION.md).
 
 ## Development
 

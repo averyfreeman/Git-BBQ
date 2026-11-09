@@ -9,7 +9,7 @@ import (
 
 const (
 	ToolName                   = "git-bbq"
-	ToolVersion                = "0.1.0"
+	ToolVersion                = "0.2.0"
 	SchemaVersion              = "1.0.0"
 	ManifestFilename           = ".gitbbq-manifest.yaml"
 	GitHabitsFilename          = ".githabits.yaml"
@@ -26,7 +26,7 @@ const (
 	MattDependencyMetadataPath = ".agents/mattpocock/DEPENDENCY.yaml"
 	MattDependencyPath         = ".agents/mattpocock"
 	MattRepository             = "https://github.com/mattpocock/skills.git"
-	MattCommit                 = "c55ee460"
+	MattCommit                 = "c55ee46073ed923f86ce59a5eb3b6d895095d1b7"
 )
 
 var SupportedLanguages = []string{"go", "python", "typescript", "javascript", "rust", "java", "csharp"}
@@ -367,7 +367,6 @@ func projectPaths(root string) []string {
 		ContextFilename,
 		ContextMapFilename,
 		"AGENTS.md",
-		"CLAUDE.md",
 		MattDependencyMetadataPath,
 		".agents/skills/githabits/SKILL.md",
 		HookConfigPath,

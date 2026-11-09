@@ -1,0 +1,5 @@
+[plugins."git-bbq@git-bbq-local"]
+enabled = true
+
+[features]
+hooks = true

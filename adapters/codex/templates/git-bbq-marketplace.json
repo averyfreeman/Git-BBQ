@@ -1,7 +1,7 @@
 {
-  "name": "git-bbq-release",
+  "name": "git-bbq-local",
   "interface": {
-    "displayName": "Git BBQ Release"
+    "displayName": "Git BBQ Local"
   },
   "plugins": [
     {

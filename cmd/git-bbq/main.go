@@ -32,16 +32,24 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
+	if hasHelpFlag(os.Args[1:]) {
+		topic := helpTopicForArgs(os.Args[1:])
+		if err := printHelp(topic); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	var err error
 	switch os.Args[1] {
+	case "help":
+		err = runHelp(os.Args[2:])
 	case "init":
 		err = runInit(os.Args[2:])
 	case "assess":
 		err = runAssess(os.Args[2:])
 	case "apply":
 		err = runApply(os.Args[2:])
-	case "migrate":
-		err = runMigrate(os.Args[2:])
 	case "uninstall":
 		err = runUninstall(os.Args[2:])
 	case "adr":
@@ -73,27 +81,187 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`git-bbq - Matt-driven architecture scaffolding and Git habits
+	text, _ := helpText("")
+	fmt.Print(text)
+}
 
-Usage:
-  git-bbq init [path] --problem TEXT --language go[,python] [--here] [--bootstrap] [--profile guided]
-  git-bbq assess [path] [--json]
-  git-bbq apply [path] --approve --problem TEXT --language go[,python] [-i]
-  git-bbq migrate [path] [--approve] [--force] [--json]
-  git-bbq uninstall [path] [--approve] [--json]
-  git-bbq adr new [path] --title TITLE --context TEXT --decision TEXT --why TEXT
-  git-bbq adr index [path]
-  git-bbq validate [path]
-  git-bbq project [path]
-  git-bbq githabits [path]
-  git-bbq githabits plan [path] --action commit --message "feat: ..."
-  git-bbq githabits execute [path] --approve --action commit --message "feat: ..."
-  git-bbq update [path]
-  git-bbq hook <event>
-  git-bbq doctor [path]
-  git-bbq schema [path]
+var helpTopicOrder = []string{
+	"init",
+	"assess",
+	"apply",
+	"uninstall",
+	"adr",
+	"adr new",
+	"adr index",
+	"validate",
+	"project",
+	"githabits",
+	"githabits plan",
+	"githabits execute",
+	"update",
+	"hooks",
+	"doctor",
+	"schema",
+	"version",
+}
 
-Use --interactive for prompts and --json for stable machine output.`)
+var helpTopics = map[string]string{
+	"init": `git-bbq init [path] --problem TEXT --language go[,python] [options]
+
+Create the project contract, AGENTS.md router, ADR context, Git policy, and
+language skills. Required flags are --problem and at least one --language.
+Options: --here, --bootstrap, --profile, --interactive, --force,
+--allow-action, --deny-action, --remember, --format, --json.`,
+	"assess": `git-bbq assess [path] [--format text|json] [--json]
+
+Inspect the files Git BBQ would create or change without writing anything.`,
+	"apply": `git-bbq apply [path] --approve --problem TEXT --language go[,python] [options]
+
+Apply a reviewed assessment. Requires --approve, --problem, and at least one
+--language. Supports --interactive, --force, profile/action overrides, and
+--format/--json output.`,
+	"uninstall": `git-bbq uninstall [path] [--approve] [--format text|json] [--json]
+
+Without --approve, show the read-only removal assessment. With --approve,
+remove only files recorded as Git BBQ-owned.`,
+	"adr": `git-bbq adr <new|index> [path]
+
+Use "git-bbq help adr new" or "git-bbq help adr index" for the nested syntax.`,
+	"adr new": `git-bbq adr new [path] --title TITLE --context TEXT --decision TEXT --why TEXT [options]
+
+Create a durable architecture decision record. Options include --status,
+--interactive/-i, --format, and --json.`,
+	"adr index": `git-bbq adr index [path]
+
+Read and emit the generated ADR retrieval index as JSON.`,
+	"validate": `git-bbq validate [path] [--format text|json] [--json]
+
+Validate the project contract, required files, ADR structure, and hook policy.`,
+	"project": `git-bbq project [path] [--json]
+
+Recreate the architecture contract, implementation plan, and ADR index
+projections from the durable project documents.`,
+	"githabits": `git-bbq githabits [path] [--format text|json] [--json]
+
+Read the repository's explicit Git workflow policy. Use the nested plan and
+execute commands for individual actions.`,
+	"githabits plan": `git-bbq githabits plan [path] --action ACTION [options]
+
+Preview one Git action without mutating the repository. Options include
+--branch, --message, --tag, --path, --existing-tag, --provision-remote,
+--format, and --json.`,
+	"githabits execute": `git-bbq githabits execute [path] --approve --action ACTION [options]
+
+Execute one previously reviewed Git plan. Requires --approve and --action.
+Supports the same action inputs as the plan command.`,
+	"update": `git-bbq update [path] [--repository URL] [--commit SHA] [--approve] [--json]
+
+Read the pinned Matt dependency, or update it only with --approve.`,
+	"hooks": `git-bbq hook <UserPromptSubmit|PreToolUse|PostToolUse|PostCompact|Stop> [--workspace PATH]
+
+Read one Codex lifecycle event as JSON from stdin and emit a JSON hook
+response. The workspace defaults to the event workspace, current directory,
+or the current process directory. This command runs a hook; it cannot trust
+one. In Codex CLI, review and trust the current plugin definition with /hooks.
+Trust is host-managed and changes to the hook definition require re-review.
+If the hooks are not listed, check that the host has not disabled hooks with
+[features] hooks = false.`,
+	"doctor": `git-bbq doctor [path]
+
+Validate the project contract and report whether the repository is healthy.`,
+	"schema": `git-bbq schema [path]
+
+Write the generated JSON schemas for the Git BBQ project contracts.`,
+	"version": `git-bbq version
+
+Print the Git BBQ tool version.`,
+}
+
+func runHelp(args []string) error {
+	return printHelp(normalizeHelpTopic(args))
+}
+
+func printHelp(topic string) error {
+	text, err := helpText(topic)
+	if err != nil {
+		return err
+	}
+	fmt.Print(text)
+	return nil
+}
+
+func helpText(topic string) (string, error) {
+	if topic == "" {
+		var builder strings.Builder
+		builder.WriteString("git-bbq - Codex-ready architecture scaffolding and Git habits\n\n")
+		builder.WriteString("Usage:\n")
+		for _, name := range helpTopicOrder {
+			firstLine := strings.SplitN(helpTopics[name], "\n", 2)[0]
+			builder.WriteString("  ")
+			builder.WriteString(firstLine)
+			builder.WriteByte('\n')
+		}
+		builder.WriteString("  git-bbq help [command [subcommand]]\n\n")
+		builder.WriteString("Use --interactive for prompts and --json for stable machine output.\n")
+		return builder.String(), nil
+	}
+	if value, ok := helpTopics[topic]; ok {
+		return value + "\n", nil
+	}
+	return "", fmt.Errorf("unknown help topic %q; run git-bbq help", topic)
+}
+
+func hasHelpFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "-h" || arg == "--help" {
+			return true
+		}
+	}
+	return false
+}
+
+func helpTopicForArgs(args []string) string {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg != "-h" && arg != "--help" {
+			filtered = append(filtered, arg)
+		}
+	}
+	if len(filtered) == 0 {
+		return ""
+	}
+	if filtered[0] == "help" {
+		return normalizeHelpTopic(filtered[1:])
+	}
+	switch filtered[0] {
+	case "adr":
+		if len(filtered) > 1 && (filtered[1] == "new" || filtered[1] == "index") {
+			return "adr " + filtered[1]
+		}
+		return "adr"
+	case "githabits":
+		if len(filtered) > 1 && (filtered[1] == "plan" || filtered[1] == "execute") {
+			return "githabits " + filtered[1]
+		}
+		return "githabits"
+	case "hook":
+		return "hooks"
+	default:
+		return filtered[0]
+	}
+}
+
+func normalizeHelpTopic(args []string) string {
+	filtered := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg != "-h" && arg != "--help" {
+			filtered = append(filtered, arg)
+		}
+	}
+	if len(filtered) == 1 && filtered[0] == "hook" {
+		return "hooks"
+	}
+	return strings.Join(filtered, " ")
 }
 
 func runInit(args []string) error {
@@ -271,36 +439,6 @@ func runApply(args []string) error {
 		}
 	}
 	return output(result, selectedFormat(*format, *jsonOutput))
-}
-
-func runMigrate(args []string) error {
-	fs := flag.NewFlagSet("migrate", flag.ContinueOnError)
-	format := fs.String("format", "text", "output format (text|json)")
-	jsonOutput := fs.Bool("json", false, "emit JSON")
-	approve := fs.Bool("approve", false, "approve the reviewed migration assessment")
-	force := fs.Bool("force", false, "archive and replace an incompatible legacy Git habits file")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	if *force && !*approve {
-		return errors.New("migrate --force requires --approve")
-	}
-	root := "."
-	if fs.NArg() > 0 {
-		root = fs.Arg(0)
-	}
-	if *approve {
-		result, err := gitbbq.Migrate(root, *force)
-		if err != nil {
-			return err
-		}
-		return output(result, selectedFormat(*format, *jsonOutput))
-	}
-	assessment, err := gitbbq.AssessMigration(root)
-	if err != nil {
-		return err
-	}
-	return output(assessment, selectedFormat(*format, *jsonOutput))
 }
 
 func runUninstall(args []string) error {

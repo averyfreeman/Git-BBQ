@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Git BBQ</title>
+  <desc id="desc">An orange grill mark over a dark Git branch symbol.</desc>
+  <rect width="512" height="512" rx="112" fill="#171717"/>
+  <path d="M256 96v116m0 0-92 92m92-92 92 92M164 304v76m184-76v76" fill="none" stroke="#F97316" stroke-linecap="round" stroke-linejoin="round" stroke-width="28"/>
+  <circle cx="256" cy="96" r="28" fill="#F97316"/>
+  <circle cx="164" cy="304" r="28" fill="#F97316"/>
+  <circle cx="348" cy="304" r="28" fill="#F97316"/>
+  <path d="M132 408h248" stroke="#FBBF24" stroke-linecap="round" stroke-width="24"/>
+  <text x="256" y="468" fill="#FFF7ED" font-family="Arial, sans-serif" font-size="42" font-weight="700" text-anchor="middle">GIT BBQ</text>
+</svg>
