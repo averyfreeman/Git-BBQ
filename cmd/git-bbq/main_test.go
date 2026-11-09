@@ -141,3 +141,112 @@ func TestRunUninstallDefaultsToAssessmentAndRequiresApproval(t *testing.T) {
 		t.Fatalf("approved uninstall left ownership ledger or returned unexpected error: %v", err)
 	}
 }
+
+func TestSecureWebPrinterExampleCreatesDocumentedProject(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "Secure-Web-Printer")
+	problem := "Build Secure-Web-Printer, a Go HTTPS server with an embedded Let's Encrypt ACME requester, HTMX and Markdown templates, and release binaries for aarch64-darwin, gnu-linux-x86_64, gnu-linux-aarch64, Windows x86_64, and Windows aarch64."
+	adrTitle := "Set Secure-Web-Printer release targets"
+	adrContext := "Secure-Web-Printer needs one release matrix for its Go HTTPS server across macOS arm64, Linux x86_64 and arm64, and Windows x86_64 and arm64."
+	adrDecision := "Use darwin/arm64 (aarch64-darwin), linux/amd64 (gnu-linux-x86_64), linux/arm64 (gnu-linux-aarch64), windows/amd64 (Windows x86_64), and windows/arm64 (Windows aarch64)."
+	adrWhy := "The names make the release promise readable while Go's GOOS and GOARCH pairs keep builds reproducible."
+
+	if err := runInit([]string{
+		"--name", "Secure-Web-Printer",
+		"--problem", problem,
+		"--language", "go",
+		root,
+	}); err != nil {
+		t.Fatalf("init example: %v", err)
+	}
+	if err := runADRNew([]string{
+		"--title", adrTitle,
+		"--context", adrContext,
+		"--decision", adrDecision,
+		"--why", adrWhy,
+		root,
+	}); err != nil {
+		t.Fatalf("adr example: %v", err)
+	}
+	if err := runProject([]string{root}); err != nil {
+		t.Fatalf("project example: %v", err)
+	}
+	if err := runValidate([]string{root}); err != nil {
+		t.Fatalf("validate example: %v", err)
+	}
+
+	manifest, err := gitbbq.ReadManifest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if manifest.ProjectName != "Secure-Web-Printer" || manifest.Problem != problem {
+		t.Fatalf("manifest identity = %#v", manifest)
+	}
+	if len(manifest.Languages) != 1 || manifest.Languages[0] != "go" {
+		t.Fatalf("manifest languages = %#v", manifest.Languages)
+	}
+
+	adrPath := filepath.Join(root, gitbbq.ADRDirectory, "0001-set-secure-web-printer-release-targets.md")
+	adr, err := gitbbq.ParseADR(adrPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adr.Title != adrTitle || !strings.Contains(adr.Body, adrDecision) || !strings.Contains(adr.Body, adrWhy) {
+		t.Fatalf("ADR = %#v", adr)
+	}
+
+	for _, relative := range []string{
+		".agents/mattpocock/DEPENDENCY.yaml",
+		".agents/skills/githabits/SKILL.md",
+		".agents/skills/go/SKILL.md",
+		".gitbbq-manifest.yaml",
+		".gitbbq/.gitignore",
+		".gitbbq/hooks.json",
+		".gitbbq/ownership.json",
+		".gitbbq/session.json",
+		".githabits.yaml",
+		"AGENTS.md",
+		"CLAUDE.md",
+		"CONTEXT-MAP.md",
+		"CONTEXT.md",
+		"architecture-contract.yaml",
+		"docs/adr/0001-set-secure-web-printer-release-targets.md",
+		"docs/adr/index.json",
+		"implementation-plan.md",
+	} {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative))); err != nil {
+			t.Fatalf("missing documented generated file %s: %v", relative, err)
+		}
+	}
+
+	contract, err := os.ReadFile(filepath.Join(root, gitbbq.ContractFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(contract), "Secure-Web-Printer") || !strings.Contains(string(contract), "gnu-linux-aarch64") {
+		t.Fatalf("architecture contract omits example scope: %s", contract)
+	}
+	plan, err := os.ReadFile(filepath.Join(root, gitbbq.ImplementationPlanFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(plan), adrTitle) || !strings.Contains(string(plan), "go") {
+		t.Fatalf("implementation projection omits example decision: %s", plan)
+	}
+	index, err := os.ReadFile(filepath.Join(root, gitbbq.ADRIndexFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(index), adrTitle) || !strings.Contains(string(index), "\"decision_count\": 1") {
+		t.Fatalf("ADR index omits example decision: %s", index)
+	}
+	ownership, err := os.ReadFile(filepath.Join(root, gitbbq.OwnershipFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(ownership), "docs/adr/0001-set-secure-web-printer-release-targets.md") {
+		t.Fatalf("ownership ledger omits example ADR: %s", ownership)
+	}
+	if err := gitbbq.ValidateProject(root); err != nil {
+		t.Fatalf("final example validation: %v", err)
+	}
+}

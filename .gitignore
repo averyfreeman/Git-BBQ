@@ -19,3 +19,12 @@ pytest-cache-files-*/
 
 # Runtime artifacts created while exercising bundled demo projects.
 /demo/**/.ai-architect/
+
+# Local credentials and generated development files
+.DS_Store
+node_modules/
+.build/
+.gocache/
+.next/
+.gradle/
+.env*
